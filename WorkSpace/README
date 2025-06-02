@@ -1,0 +1,11 @@
+GISS branch of NG-CFFDRS code.
+PLEASE ONLY USE THIS DIRECTORY (WorkSpace) TO RUN CODE
+
+R code: Specify the directory of the code with environment variable R_Fire
+
+To run tutorial code:
+- python:   python ../Tutorial_NGFWI.py ../data/wx_prf.csv PRF_py.csv
+- R:        Rscript ../Tutorial_NGFWI.R ../data/wx_prf.csv PRF_R.csv
+
+Note that for the outputs, R's counting starts at 1 while python's starts at 0
+

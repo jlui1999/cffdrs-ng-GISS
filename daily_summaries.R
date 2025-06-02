@@ -8,8 +8,9 @@ if("--args" %in% commandArgs()){
   commandArgs <- function(...) c("SILENCE")  
 }
 
-source("NG_FWI.r")
-source("util.r")
+Rpath = Sys.getenv("R_Fire")
+source(paste0(Rpath, "/NG_FWI.r"))
+source(paste0(Rpath, "/util.r"))
 
 
 smooth_5pt <- function(source) {
@@ -320,7 +321,7 @@ generate_daily_summaries <- function(hourly_data){
 
 
 
-
+if(FALSE){ # do not run, file is being source()'d
 # so this can be run via Rscript
 print("echo test 1")
 #pulled command line args out a top of script
@@ -337,7 +338,7 @@ if (length(args)>0){
     message("Wrong number of arguments: arguments are <input_file> <output_file>")
   }
 }
-
+}
 
 
 

@@ -1,7 +1,9 @@
 #' Computes hourly FWI indices for an input hourly weather stream
 library(lubridate)
 library(data.table)
-source("util.r")
+
+Rpath = Sys.getenv("R_Fire")
+source(paste0(Rpath, "/util.r"))
 
 # Fuel Load (kg/m^2)
 DEFAULT_GRASS_FUEL_LOAD <- 0.35

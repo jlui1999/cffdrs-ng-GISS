@@ -1,7 +1,9 @@
 # convert min/max weather format into hourly format
 library(data.table)
 library(lubridate)
-source("util.r")
+
+Rpath = Sys.getenv("R_Fire")
+source(paste0(Rpath, "/util.r"))
 
 C_TEMP <- list(c_alpha = 0.2, c_beta = 2.0, c_gamma = -2.9)
 C_RH <- list(c_alpha = 0.4, c_beta = 1.9, c_gamma = -2.9)

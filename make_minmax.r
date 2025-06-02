@@ -1,6 +1,8 @@
 # convert daily weather into min/max weather format
 library(data.table)
-source("util.r")
+
+Rpath = Sys.getenv("R_Fire")
+source(paste0(Rpath, "/util.r"))
 
 # This function is for the method that takes old traditional 1pm weather (labelled here as noon)
 # and estimates a diurnal temperature range to fit into the scheme that flows into the max/min method

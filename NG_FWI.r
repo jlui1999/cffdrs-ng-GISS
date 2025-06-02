@@ -1,7 +1,10 @@
 #' Computes hourly FWI indices for an input hourly weather stream
 library(lubridate)
 library(data.table)
-source("util.r")
+
+Rpath = Sys.getenv("R_Fire")
+source(paste0(Rpath, "/util.r"))
+
 #source("old_cffdrs.r")
 
 DAILY_K_DMC_DRYING <- 1.894

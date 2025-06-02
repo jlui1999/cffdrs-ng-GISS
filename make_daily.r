@@ -1,7 +1,9 @@
 # convert hourly weather into daily format
 library(data.table)
 library(lubridate)
-source("util.r")
+
+Rpath = Sys.getenv("R_Fire")
+source(paste0(Rpath, "/util.r"))
 
 #' Convert hourly values stream to daily noon values stream.
 #'
