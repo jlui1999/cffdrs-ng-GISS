@@ -44,20 +44,20 @@ data = pd.read_csv(datafile)
 # 2  PRF  46.013925 -77.418044  2007    5   10  10  21.21  62.95  4.3590   0.0   
 # 3  PRF  46.013925 -77.418044  2007    5   10  11  23.60  46.17  8.2100   0.0   
 # 4  PRF  46.013925 -77.418044  2007    5   10  12  24.55  41.53  9.4200   0.0
-data.head()
+print(data.head())
 
 ### Find the timezone ###
 # First, make a dataframe of stations with unique ID, latitude, and longitude.
 stations = data.loc[:, ['id', 'lat', 'long']].drop_duplicates()
 # Print the unique station IDs and locations. For this dataset the only station
 # is at Petawawa Research Forest (PRF).
-stations
+print(stations)
 
 # Find the timezone based on latitude and longitude
 tf = TimezoneFinder()
 tz_loc = tf.timezone_at(lat = stations.at[0, 'lat'], lng = stations.at[0, 'long'])
 # Print timezone location. PRF is equivalent to "America/Toronto".
-tz_loc
+print(tz_loc)
 
 ### Find the UTC offset ###
 # The UTC timezone offset is a required input for the FWI2025 function.
@@ -67,7 +67,7 @@ tz_loc
 utc = timezone(tz_loc).localize(datetime(2007, 1, 1)).strftime('%z')
 # Print utc offset, for this tutorial, "PRF" is in Eastern Time (EST), so UTC is
 # '-0500'
-utc
+print(utc)
 
 # The UTC offset input is expected as integer hours, so we can set it to -5.
 utc = -5
@@ -115,7 +115,7 @@ report = generate_daily_summaries(data_fwi)
 # 20     1
 # 23     1
 # Name: count, dtype: int64
-report['peak_time'].value_counts().sort_index()
+print(report['peak_time'].value_counts().sort_index())
 
 # From here, the outputs can be converted to any datatype for further analysis or
 # plotted for visualization.
