@@ -26,6 +26,7 @@ from daily_summaries import generate_daily_summaries
 
 import sys
 
+initializeCodes = False
 if (len(sys.argv) < 3):
     print('Usage: python Tutorial_NGFWI.py <data file> <output file> [ffmc] [dmc] [dc]')
     exit()
@@ -33,6 +34,7 @@ elif (len(sys.argv) == 6):
     ffmc = sys.argv[3]
     dmc = sys.argv[4]
     dc = sys.argv[5]
+    initializeCodes = True
 
 datafile = sys.argv[1] 
 outputfile = sys.argv[2]
@@ -83,7 +85,10 @@ print(utc)
 # handle multiple stations and years/fire seasons (not shown in this tutorial).
 # Make sure to specify the corresponding UTC offsets for different stations.
 # Default starting FWI codes are: ffmc_old = 85, dmc_old = 6, dc_old = 15
-data_fwi = hFWI(data, utc)
+if (initializeCodes):
+    data_fwi = hFWI(data, utc, ffmc_old=ffmc, dmc_old=dmc, dc_old=dc)
+else:
+    data_fwi = hFWI(data, utc)
 
 # Output is a dataframe, with first 11 columns being the same as input, now plus:
 # percent_cured, date, timestamp, timezone, solrad, sunrise, sunset, sunlight_hours,
