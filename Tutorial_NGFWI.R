@@ -21,12 +21,20 @@ args = commandArgs(trailingOnly=TRUE)
 print(args)
 numargs = length(args)
 if (numargs < 2) {
-  print('Usage: Rscript Tutorial_NGFWI.R <data file> <output file>')
+  print('Usage: Rscript Tutorial_NGFWI.R <data file> <output file> [ffmc] [dmc] [dc]')
   quit()
 }
 
 datafile = args[1]
 outputfile = args[2]
+
+if.initializeCodes = FALSE
+if (numargs == 5) {
+  ffmc = args[3]
+  dmc = args[4]
+  dc = args[5]
+  if.initializeCodes = TRUE
+}
 
 Rpath = Sys.getenv("R_Fire")
 Rpath
@@ -91,7 +99,11 @@ utc
 # handle multiple stations and years/fire seasons (not shown in this tutorial).
 # Make sure to specify the corresponding UTC offsets for different stations.
 # Default starting FWI codes are: ffmc_old = 85, dmc_old = 6, dc_old = 15
-data_fwi <- hFWI(data, utc)
+if (if.initializeCodes) {
+  data_fwi <- hFWI(data, utc, ffmc_old=ffmc, dmc_old=dmc, dc_old=dc)
+} else {
+  data_fwi <- hFWI(data, utc)
+}
 
 # Output is a data TABLE, with FWI calculations appended after the input columns.
 # Save the output as a .csv file (overrides any data in any preexisting file).

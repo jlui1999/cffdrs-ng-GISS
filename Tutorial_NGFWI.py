@@ -27,11 +27,15 @@ from daily_summaries import generate_daily_summaries
 import sys
 
 if (len(sys.argv) < 3):
-    print('Usage: python Tutorial_NGFWI.py <data file> <output file>')
+    print('Usage: python Tutorial_NGFWI.py <data file> <output file> [ffmc] [dmc] [dc]')
     exit()
-else:
-    datafile = sys.argv[1] 
-    outputfile = sys.argv[2]
+elif (len(sys.argv) == 6):
+    ffmc = sys.argv[3]
+    dmc = sys.argv[4]
+    dc = sys.argv[5]
+
+datafile = sys.argv[1] 
+outputfile = sys.argv[2]
 
 ### Load the input weather station file ###
 # Specify the file path if wx_prf.csv is not in working directory
@@ -70,7 +74,9 @@ utc = timezone(tz_loc).localize(datetime(2007, 1, 1)).strftime('%z')
 print(utc)
 
 # The UTC offset input is expected as integer hours, so we can set it to -5.
-utc = -5
+#utc = -5
+utc = int(utc[:3])
+print(utc)
 
 ### Calculate hourly FWI System outputs with FWI2025 ###
 # hFWI() is the function that calculates hourly FWI codes in FWI2025. It can
