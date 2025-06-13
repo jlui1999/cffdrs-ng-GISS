@@ -1,11 +1,110 @@
 GISS branch of NG-CFFDRS code.
 PLEASE ONLY USE THIS DIRECTORY (WorkSpace) TO RUN CODE
 
+############################# Running FWI #############################
+
 R code: Specify the directory of the code with environment variable R_Fire
+
+Libraries required for R:
+library(lubridate)
+library(data.table)
+library(lutz)
+
+Packages required for python:
+import pandas as pd
+from datetime import datetime
+from timezonefinder import TimezoneFinder
+from pytz import timezone
+import logging
 
 To run tutorial code:
 - python:   python ../Tutorial_NGFWI.py ../data/wx_prf.csv PRF_py.csv
 - R:        Rscript ../Tutorial_NGFWI.R ../data/wx_prf.csv PRF_R.csv
 
+FWI may be initialized with FFMC, DMC, and DC codes placed after the output file. By default, this is 
+
 Note that for the outputs, R's counting starts at 1 while python's starts at 0
 
+#########################  Preprocessing Data ##########################
+
+wx_convert_filter.sh: Converts data to a format the FWI scripts can read.
+
+  Arguments:
+    - Input CSV file, in the format of
+
+      YYYY,MM,DD,HH,MMM,REPORTTYPE,TEMP_C,RH_PERC,WDSPD_KPH,SNOWD_M,VIS_KM,VPD_HPA,PREC1_MM,PREC2_MM,PREC3_MM,PREC4_MM,PREC5_MM,PRECT1_HR,PRECT2_HR,PRECT3_HR,PRECT4_HR,PRECT5_HR
+      1995,10,1,0,0,FM-12,8.9,67.9422653814545,14.4,NaN,NaN,3.66275045525968,0,0,NaN,NaN,NaN,6,24,NaN,NaN,NaN
+      1995,10,1,6,0,FM-12,4.9,91.9409435753429,0,NaN,NaN,0.699925803467729,0,0,NaN,NaN,NaN,6,24,NaN,NaN,NaN
+      1995,10,1,12,0,FM-12,0.6,100,3.6,NaN,NaN,0,0,0,NaN,NaN,NaN,6,24,NaN,NaN,NaN
+      1995,10,2,0,0,FM-12,10.7,33.0917697905866,18,NaN,NaN,8.62379037177597,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN
+      1995,10,2,6,0,FM-12,1.6,79.289012425743,0,NaN,NaN,1.42463445403898,0,NaN,NaN,NaN,NaN,6,NaN,NaN,NaN,NaN
+
+      YYYY: year
+      MM: month
+      DD: day
+      HH: hour
+      MMM: minute
+      REPORTTYPE: coded report type (FM-12, FM-15, SY-SA etc..)
+      TEMP_C: temperature in degrees celsius
+      RH_PERC: relative humidity in percent
+      WDSPD_KPH: windspeed in km per hour
+      SNOWD_M: snow depth in meters
+      VIS_KM: visibility in km. This isn't an FWI input, but can be interesting as a smoke indicator.
+      VPD_HPA: vapor pressure deficit in hPa. This isn't an FWI input, but is also interesting.
+      PREC1_MM: precipitation in mm over 1st reporting period.
+      PREC2_MM: precipitation in mm over 2nd reporting period.
+      PREC3_MM: precipitation in mm over 3rd reporting period.
+      PREC4_MM: precipitation in mm over 4th reporting period.
+      PREC5_MM: precipitation in mm over 5th reporting period.
+      PRECT1_HR: 1st precipitation totalling period in hours.
+      PRECT2_HR: 2nd precipitation totalling period in hours.
+      PRECT3_HR: 3rd precipitation totalling period in hours.
+      PRECT4_HR: 4th precipitation totalling period in hours.
+      PRECT5_HR: 5th precipitation totalling period in hours.
+
+    - Starting year of extraction
+    - Ending year of extraction
+    - ID/name of the weather station
+    - Latitude of the weather station
+    - Longitude of the weather station
+    - Output file name
+
+      Outputs will be given in the format of
+
+      id,lat,long,yr,mon,day,hr,temp,rh,ws,prec
+      718870-99999,50.702,-120.444,2024,1,29,0,6.2,87.6321162616729,14.76,0.7
+      718870-99999,50.702,-120.444,2024,1,29,1,5,93.2480954480589,18.36,0.7
+      718870-99999,50.702,-120.444,2024,1,29,2,5,86.902676258922,14.76,0.7
+      718870-99999,50.702,-120.444,2024,1,29,3,4.8,91.2893265574923,20.52,0.7
+      718870-99999,50.702,-120.444,2024,1,29,4,5,86.902676258922,22.32,0.7
+
+      id  Weather station identifier, a unique number for the station, text or number
+      lat Latitude of weather station, decimal degrees (°) (double precision)
+      long  Longitude of weather station, decimal degrees (°) (double precision)
+      yr  Year of weather station reading, number YYYY
+      mon Month of weather station reading, number M or MM (must be consistent throughout the dataset)
+      day Day of weather station reading, number DD or D (must be consistent throughout the dataset)
+      hr  Hour of weather station reading, number in military time (0-23)
+      temp  Temperature in degrees Celsius (°C), number
+      rh  Relative humidity in percent (%), number (0-100)
+      ws  Wind speed in kilometres per hour (km/hr), number
+      prec  Precipitation (rain) measured in millimetres (mm), number
+
+  NOTE: no output will be given if no line exists where all variables temp, rh, ws, prec are valid values (not NaN). Internally, this script will fill in NaNs with the previous value. This script will also check for discontinuities in hourly data (where data is missing for an hour or where a duplicate entry exists).
+
+wx_batch_convert.sh: Batch converts data by calling wx_convert_filter.sh. Batch conversion will take places for files within a bounding longitude vaguely corresponding to Canada (-140 to -50).
+
+  Arguments:
+    - CSV list of files, in the format of
+
+      WMOID,WMONAME,LAT,LON,ELEV,GHCNStnList
+      166270-99999,DIMOKRITOS,40.856,25.956,7.3,NaN
+      166990-99999,TANAGRA,38.34,23.565,147.8,NaN
+      167150-99999,TATOI,38.109,23.784,239.3,NaN
+      167180-99999,ELEFSIS,38.064,23.556,43.6,NaN
+      167490-99999,DIAGORAS,36.405,28.086,5.8,NaN
+
+    - Input directory of where the weather station data is stored
+    - Starting year of extraction
+    - Ending year of extraction
+    - Output directory of converted files
