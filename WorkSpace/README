@@ -32,35 +32,37 @@ wx_convert_filter.sh: Converts data to a format the FWI scripts can read.
   Arguments:
     - Input CSV file, in the format of
 
-      YYYY,MM,DD,HH,MMM,REPORTTYPE,TEMP_C,RH_PERC,WDSPD_KPH,SNOWD_M,VIS_KM,VPD_HPA,PREC1_MM,PREC2_MM,PREC3_MM,PREC4_MM,PREC5_MM,PRECT1_HR,PRECT2_HR,PRECT3_HR,PRECT4_HR,PRECT5_HR
-      1995,10,1,0,0,FM-12,8.9,67.9422653814545,14.4,NaN,NaN,3.66275045525968,0,0,NaN,NaN,NaN,6,24,NaN,NaN,NaN
-      1995,10,1,6,0,FM-12,4.9,91.9409435753429,0,NaN,NaN,0.699925803467729,0,0,NaN,NaN,NaN,6,24,NaN,NaN,NaN
-      1995,10,1,12,0,FM-12,0.6,100,3.6,NaN,NaN,0,0,0,NaN,NaN,NaN,6,24,NaN,NaN,NaN
-      1995,10,2,0,0,FM-12,10.7,33.0917697905866,18,NaN,NaN,8.62379037177597,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN,NaN
-      1995,10,2,6,0,FM-12,1.6,79.289012425743,0,NaN,NaN,1.42463445403898,0,NaN,NaN,NaN,NaN,6,NaN,NaN,NaN,NaN
+      YYYY,MM,DD,HH,TEMP_C,RH_PERC,VPD_HPA,WDSPD_KPH,PREC_MM,SNOWD_M,VIS_KM,FFMC,DMC,DC,BUI,ISI,FWI,OBSMINUTEDIFF_TEMP,OBSMINUTEDIFF_RH,OBSMINUTEDIFF_WDSPD,ISPRECREPORTED,OBSMINUTEDIFF_SNOW,OBSMINUTEDIFF_VIS
+      1989,12,31,19,18.3,36.0860416675646,13.454787547469,37.08,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,0,0,0,1,0,0
+      1989,12,31,20,16.5333333349787,42.0976523010093,11.7011221697317,30.9000000057556,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,300.000000055879,300.000000055879,300.000000055879,1,300.000000055879,300.000000055879
+      1989,12,31,21,14.7666666650213,48.1092629512503,9.94745678709469,24.7199999942444,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,239.999999944121,239.999999944121,239.999999944121,1,239.999999944121,239.999999944121
+      1989,12,31,22,13,54.120873584695,8.19379140935738,18.54,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,180,180,180,1,180,180
+      1989,12,31,23,11.2333333349787,60.1324842181397,6.44012603162007,12.3600000057556,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,239.999999944121,239.999999944121,239.999999944121,1,239.999999944121,239.999999944121
 
-      YYYY: year
-      MM: month
-      DD: day
-      HH: hour
-      MMM: minute
-      REPORTTYPE: coded report type (FM-12, FM-15, SY-SA etc..)
+      YYYY: year, local time
+      MM: month, local time
+      DD: day, local time
+      HH: hour, local time
       TEMP_C: temperature in degrees celsius
       RH_PERC: relative humidity in percent
+      VPD_HPA: vapor pressure deficit in hPa. This isn't an FWI input, but is interesting.
       WDSPD_KPH: windspeed in km per hour
-      SNOWD_M: snow depth in meters
-      VIS_KM: visibility in km. This isn't an FWI input, but can be interesting as a smoke indicator.
-      VPD_HPA: vapor pressure deficit in hPa. This isn't an FWI input, but is also interesting.
-      PREC1_MM: precipitation in mm over 1st reporting period.
-      PREC2_MM: precipitation in mm over 2nd reporting period.
-      PREC3_MM: precipitation in mm over 3rd reporting period.
-      PREC4_MM: precipitation in mm over 4th reporting period.
-      PREC5_MM: precipitation in mm over 5th reporting period.
-      PRECT1_HR: 1st precipitation totalling period in hours.
-      PRECT2_HR: 2nd precipitation totalling period in hours.
-      PRECT3_HR: 3rd precipitation totalling period in hours.
-      PRECT4_HR: 4th precipitation totalling period in hours.
-      PRECT5_HR: 5th precipitation totalling period in hours.
+      PREC_MM: hourly total precipitation in mm
+      SNOWDEPTH_M: snow depth in meters
+      VIS_KM: visibility in km. This isn't an FWI input, but is interesting.
+      FFMC: Fine Fuel Moisture Code
+      DMC: Duff Moisture Code
+      DC: Drought Code
+      BUI: Buildup Index
+      ISI: Initial Spread Index
+      FWI: Fire Weather Index
+      DSR: Daily Severity Rating
+      OBSMINUTEDIFF_TEMP: maximum of time difference in minutes between local 12:00pm and the closest real temperature observations before and after the local hour
+      OBSMINUTEDIFF_RH: maximum of time difference in minutes between local 12:00pm and the closest real relative humidity observations before and after the local hour, meaning temperature and dew point
+      OBSMINUTEDIFF_WDSPD: maximum of time difference in minutes between local 12:00pm and the closest real wind speed observations before and after the local hour
+      ISPRECREPORTED: 1 if there was a precipitation report spanning that hour, 0 otherwise
+      OBSMINUTEDIFF_SNOW: maximum of time difference in minutes between local 12:00pm and the closest real snow depth observations before and after the local hour
+      OBSMINUTEDIFF_VIS: maximum of time difference in minutes between local 12:00pm and the closest real visibility observations before and after the local hour
 
     - Starting year of extraction
     - Ending year of extraction
@@ -96,6 +98,15 @@ wx_batch_convert.sh: Batch converts data by calling wx_convert_filter.sh. Batch 
 
   Arguments:
     - CSV list of files, in the format of
+
+      WMOID,WMONAME,LAT,LON,HRLYMEANTIMEDIFFTOOBS_TEMP,HRLYMEANTIMEDIFFTOOBS_RH,HRLYMEANTIMEDIFFTOOBS_WDSPD,HRLYMEANPRECREPORTINGHRS,ISD_GHCN_PRECDIFFPERCENT,HRLYMEANTIMEDIFFTOOBS__VIS
+      725920-24257,REDDING MUNICIPAL AIRPORT,40.52,-122.30,32,32,32,1,Inf,31
+      723656-23049,SANTA FE MUNICIPAL AIRPORT,35.61,-106.10,84,84,80,1,Inf,80
+      725025-94741,TETERBORO AIRPORT,40.86,-74.06,53,53,47,1,Inf,46
+      702610-26411,FAIRBANKS INTERNATIONAL,64.80,-147.88,102,102,35,1,-8,36
+      718890-99999,PENTICTON,49.46,-119.60,5,5,6,1,0,5
+
+      NOTE: only the first four entries are read in, so the following file will also work
 
       WMOID,WMONAME,LAT,LON,ELEV,GHCNStnList
       166270-99999,DIMOKRITOS,40.856,25.956,7.3,NaN

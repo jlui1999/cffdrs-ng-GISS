@@ -16,9 +16,11 @@ yearstart=$3
 yearend=$4
 outdir=$5
 
+commonsuffix=".linear.HourlyFWIFromHourlyInterpContinuous.csv"
+
 # Filter bounding box for Canada (but also include stuff on different latitudes)
-lonmin=-140
-lonmax=-50
+lonmin=-150
+lonmax=-40
 
 bash_source=$(cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P)
 mkdir -p $outdir
@@ -29,10 +31,10 @@ while IFS=$',' read -r -a args; do
   wmoname=${args[1]}
   lat=${args[2]}
   lon=${args[3]}
-  #echo "${indir}/${wmoid}.hourlyWxRawISD.csv"
-  if [ -f "${indir}/${wmoid}.hourlyWxRawISD.csv" ] && (( $(echo "$lon > $lonmin" | bc) )) && (( $(echo "$lon < $lonmax" | bc) )) ; then
+  echo "${indir}/${wmoid}${commonsuffix}"
+  if [ -f "${indir}/${wmoid}${commonsuffix}" ] && (( $(echo "$lon > $lonmin" | bc) )) && (( $(echo "$lon < $lonmax" | bc) )) ; then
     # use wx_convert_filter.sh to do conversion
     echo ${wmoid}: $wmoname, $lat, $lon
-    $bash_source/wx_convert_filter.sh "${indir}/${wmoid}.hourlyWxRawISD.csv" $yearstart $yearend $wmoid $lat $lon "${outdir}/wx_${wmoid}.csv"
+    $bash_source/wx_convert_filter.sh "${indir}/${wmoid}${commonsuffix}" $yearstart $yearend $wmoid $lat $lon "${outdir}/wx_${wmoid}.csv"
   fi
 done < $listfiles

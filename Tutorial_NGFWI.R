@@ -44,6 +44,8 @@ if (Rpath=="") {
   quit()
 }
 
+if.view = FALSE
+
 ### Load FWI2025 functions ###
 # NG_FWI.r and util.r files contain the functions necessary to calculate FWI2025.
 # For the source() function to work, the working directory must match the
@@ -112,7 +114,9 @@ write.csv(data_fwi, outputfile)
 
 # View a simple summary of the standard FWI components.
 standard_components <- c("ffmc", "dmc", "dc", "isi", "bui", "fwi")
-View(summary(data_fwi[, ..standard_components]))
+if (if.view) {
+  View(summary(data_fwi[, ..standard_components]))
+}
 
 ### Calculate daily summaries ###
 # Calculate outputs like peak burn time and number of hours of spread potential.
@@ -120,7 +124,9 @@ report <- generate_daily_summaries(data_fwi)
 
 # View a simple summary of the daily report (convert values to numeric class first).
 daily_components <- c("peak_time", "duration", "peak_isi_smoothed", "dsr")
-View(summary(apply(report[daily_components], 2, as.numeric)))
+if (if.view) {
+  View(summary(apply(report[daily_components], 2, as.numeric)))
+}
 
 # From here, the outputs can be converted to any datatype for further analysis or
 # plotted for visualization.
