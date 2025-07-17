@@ -4,9 +4,9 @@
 
 # Batch convert csv files into format the FWI scripts can read
 
-if [ $# -ne 5 ]; then
+if [ $# -lt 5 ]; then
   echo "Required arguments needed: 5, provided: $#"
-  echo "<csv of sites> <directory of wx data> <year start> <year end> <output directory>"
+  echo "<csv of sites> <directory of wx data> <year start> <year end> <output directory> [suffix]"
   exit 1
 fi
 
@@ -15,6 +15,10 @@ indir=$2
 yearstart=$3
 yearend=$4
 outdir=$5
+
+if [ $# -ge 6 ]; then
+  suffix=$6
+fi
 
 commonsuffix=".linear.HourlyFWIFromHourlyInterpContinuous.csv"
 
@@ -35,6 +39,6 @@ while IFS=$',' read -r -a args; do
   if [ -f "${indir}/${wmoid}${commonsuffix}" ] && (( $(echo "$lon > $lonmin" | bc) )) && (( $(echo "$lon < $lonmax" | bc) )) ; then
     # use wx_convert_filter.sh to do conversion
     echo ${wmoid}: $wmoname, $lat, $lon
-    $bash_source/wx_convert_filter.sh "${indir}/${wmoid}${commonsuffix}" $yearstart $yearend $wmoid $lat $lon "${outdir}/wx_${wmoid}.csv"
+    $bash_source/wx_convert_filter.sh "${indir}/${wmoid}${commonsuffix}" $yearstart $yearend $wmoid $lat $lon "${outdir}/wx_${wmoid}${6}.csv"
   fi
 done < $listfiles
