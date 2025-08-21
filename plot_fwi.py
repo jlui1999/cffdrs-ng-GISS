@@ -6,16 +6,18 @@ import argparse, os
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from datetime import datetime, timedelta
+import calendar
 
 parser = argparse.ArgumentParser()
 
 parser.add_argument('-i', '--input', nargs=1, required=True, help='Name of csv file of FWI output')
 parser.add_argument('-o', '--output', nargs=1, required=True, help='Name of output file of FWI output (PDF or PNG)')
 parser.add_argument('--name', nargs=1, help='Name of the station')
-parser.add_argument('-m', '--mode', nargs=1, help='Plot type: hourly (hourly FWI), maxdaily (maximum daily FWI), rolling (daily rolling period, specify period in days)')
+parser.add_argument('-m', '--mode', nargs=1, help='Plot type: default (hourly and maximum daily FWI), hourly (hourly FWI), maxdaily (maximum daily FWI), rolling (daily rolling period, specify period in days)')
 parser.add_argument('-p', '--period', nargs=1, help='Period for rolling statistics, number of days in rolling average')
 parser.add_argument('--from', nargs=3, help='Date from where plot starts, separated by spaces YYYY MM DD')
 parser.add_argument('--to', nargs=3, help='Date to where plot ends, separated by spaces YYYY MM DD')
+parser.add_argument('--all', action='store_true', help='Plot the entire date range (option ignored if either --from or --to are also given, not applicable to rolling plot)')
 
 args = parser.parse_args()
 
@@ -25,6 +27,7 @@ outputfile_format = None
 startdate = None
 enddate = None
 period = None
+plot_all = False
 station_name = ''
 plot_mode = 'default'
 
@@ -66,12 +69,14 @@ for k,v in vars(args).items():
     if (k == 'to'):
         if (v is not None):
             time = [ int(i) for i in v ]
-            enddate = datetime(*time)
-
+            enddate = datetime(*time, hour=23)
+    if (k == 'all'):
+        plot_all = v
 
 if (plot_mode == ROLLING_STATS and period is None):
     print("Must specify period and starting and end dates for rolling statistics. --from <YYYY> <MM> <DD> --to <YYYY> <MM> <DD> --period <days>")
     exit(4)
+
 class fwi_data:
     def __init__(self, csvfile, station_name):
         self.name = station_name
@@ -81,27 +86,42 @@ class fwi_data:
         self.df['full_date'] = pd.to_datetime(self.df[['year', 'month', 'day', 'hour']])
 
     def plothourly(self, outputfile, startdate, enddate):
-        if (startdate is None):
+        if (startdate is None and enddate is None):
+            if (plot_all):
+                startdate = self.df.iloc[0]["full_date"]
+                enddate = self.df.iloc[-1]["full_date"]
+            else:
+                startdate, enddate = self.findFireSeason()
+        elif (startdate is None):
             startdate = self.df.iloc[0]["full_date"]
-        if (enddate is None):
+        elif (enddate is None):
             enddate = self.df.iloc[-1]["full_date"]
         do_plot_setup(self.id, self.name, extra=' (Hourly)')
         filtered_rows = self.df[(self.df['full_date'] >= startdate) & (self.df['full_date'] <= enddate)]
-        plt.plot(filtered_rows['full_date'], filtered_rows['fwi'], color='red', linewidth=0.5)
+        plt.plot(filtered_rows['full_date'], filtered_rows['fwi'], color='blue', linewidth=0.5)
         plt.gca().set_ylim(bottom=0)
         plt.savefig(outputfile)
 
     def plotmaxdaily(self, outputfile, startdate, enddate, plothourly=False):
-        if (startdate is None):
+        if (startdate is None and enddate is None):
+            if (plot_all):
+                startdate = self.df.iloc[0]["full_date"]
+                enddate = self.df.iloc[-1]["full_date"]
+            else:
+                startdate, enddate = self.findFireSeason()
+        elif (startdate is None):
             startdate = self.df.iloc[0]["full_date"]
-        if (enddate is None):
+        elif (enddate is None):
             enddate = self.df.iloc[-1]["full_date"]
         do_plot_setup(self.id, self.name, extra=' (Max Daily)')
         maxdates, maxfwis = self.getmaxdailyfwi(startdate, enddate)
         if (plothourly):
+            # need a dummy last day to get the step plot to look better
+            maxdates.append(maxdates[-1] + timedelta(days=1))
+            maxfwis.append(maxfwis[-1])
             plt.step(maxdates, maxfwis, where='post', color='red', linewidth=2, label='Max Daily FWI')
             filtered_rows = self.df[(self.df['full_date'] >= startdate) & (self.df['full_date'] <= enddate)]
-            plt.plot(filtered_rows['full_date'], filtered_rows['fwi'], color='red', linewidth=0.5, label='Hourly FWI')
+            plt.plot(filtered_rows['full_date'], filtered_rows['fwi'], color='blue', linewidth=0.5, label='Hourly FWI')
             plt.legend(fontsize=20, framealpha=0.5)
         else:
             plt.plot(maxdates, maxfwis, color='red', linewidth=2)
@@ -110,8 +130,7 @@ class fwi_data:
 
     def plotrolling(self, outputfile, startdate, enddate, period):
         if (period is None or startdate is None or enddate is None):
-            print("Invalid specification.")
-            exit(4)
+            startdate, enddate = self.findFireSeason()
         do_plot_setup(self.id, self.name, extra=" (Rolling Period {} Days)".format(period))
         dates, p5, p25, p50, p75, p95, avgfwis = self.getrollingfwi(startdate, enddate, period)
         plt.fill_between(dates, p5, p95, color='0.95', label='95%')
@@ -145,60 +164,61 @@ class fwi_data:
 
         return dates, maxfwis
 
-#       try:
-#           idx = 0
-#           while True:
-#               datarow = self.df.iloc[idx]
-#               year = datarow['year']
-#               month = datarow['month']
-#               day = datarow['day']
-#               filtered_rows = self.df[(self.df['year'] == year) & (self.df['month'] == month) & (self.df['day'] == day)]
-#               maxfwi = max(filtered_rows['fwi'])
-#               datemaxfwi = datetime(year, month, day)
+    # returns the four months of the calculated fire season (max of rolling 4 month average) and return those four months of the specified year if it exists in the dataset
+    # if no year is specifed, return the latest year with those months (including incomplete months)
+    def findFireSeason(self, year=0):
+        data_enddate = self.df.iloc[-1]["full_date"]
+        avg_fwis = np.zeros(12)
+        avg_fwis_4m = np.zeros(12)
+        
+        for i in range(12):
+            filtered_rows = self.df[(self.df['month'] == i+1)]
+            if (len(filtered_rows) == 0):
+                continue
+            avg_fwis[i] = np.average(filtered_rows['fwi'])
+        #print (avg_fwis)
 
-#               maxfwis.append(maxfwi)
-#               dates.append(datemaxfwi)
-#               idx += 24
-#       except IndexError:
-#           return dates, maxfwis
+        for j in range(12):
+            avg_fwis_4m[j] = np.average(avg_fwis[0:4])
+            avg_fwis = np.roll(avg_fwis, -1)
+        #print (avg_fwis_4m)
+
+        fireseason_startmonth = np.argmax(avg_fwis_4m) + 1
+        fireseason_endmonth = (fireseason_startmonth + 2) % 12 + 1
+
+        if (year !=0):
+            fireseason_startyear = year
+            fireseason_endyear = year if (fireseason_endmonth > fireseason_startmonth) else year+1
+        else:
+            lendata = len(self.df[(self.df['year'] == data_enddate.year) & (self.df['month'] == fireseason_endmonth)])
+            if (lendata > 0):
+                fireseason_endyear = data_enddate.year
+                fireseason_startyear = fireseason_endyear if (fireseason_endmonth > fireseason_startmonth) else fireseason_endyear-1
+            else:
+                # if no data in the end of the fire season in the last year of the data, try the previous year
+                lendata2 = len(self.df[(self.df['year'] == data_enddate.year - 1) & (self.df['month'] == fireseason_endmonth)])
+                if (lendata2 > 0):
+                    fireseason_endyear = data_enddate.year - 1
+                    fireseason_startyear = fireseason_endyear if (fireseason_endmonth > fireseason_startmonth) else fireseason_endyear-1
+                else:
+                    raise LookupError("No fire season found. Is there enough data?")
+        startdate = datetime(fireseason_startyear, fireseason_startmonth, 1)
+        enddate = datetime(fireseason_endyear, fireseason_endmonth, calendar.monthrange(fireseason_endyear, fireseason_endmonth)[1], hour=23)
+
+        return startdate, enddate
 
     # returns rolling FWI of all previous FWI periods in percentiles 5, 25, 50, 75, 95, along with the average FWI for the latest period
     def getrollingfwi(self, startdate, enddate, period):
-        if (period is None or startdate is None or enddate is None):
+        if (period is None):
             print("Invalid specification.")
             exit(4)
+        if (startdate is None or enddate is None):
+            startdate, enddate = self.findFireSeason()
         period_startmon = startdate.month
         period_startday = startdate.day
         period_endmon = enddate.month
         period_endday = enddate.day
         period_length = period
-
-#       # check if period is over new year
-#       if (period_startmon > period_endmon):
-#           newyear = True
-#       else:
-#           newyear = False
-
-#       # check for period over new year in same month
-#       if (period_startmon == period_endmon):
-#           if (period_startday > period_endday):
-#               newyear = True
-#           else:
-#               newyear = False
-
-#       # check if period exists in last year(s) of data
-#       lastyear = self.df['year'].iloc[-1]
-#       if (len(self.df[(self.df['year'] == lastyear) & (self.df['month'] == period_endmon) & (self.df['day'] == period_endday)]) == 0):
-#           print("Date {}-{}-{} does not seem to exist in data.".format(lastyear, period_endmon, period_endmon))
-#           exit(6)
-#       if (newyear):
-#           if (len(self.df[(self.df['year'] == lastyear - 1) & (self.df['month'] == period_startmon) & (self.df['day'] == period_startday)]) == 0):
-#               print("Date {}-{}-{} does not seem to exist in data.".format(lastyear-1, period_startmon, period_startmon))
-#               exit(6)
-#       else:
-#           if (len(self.df[(self.df['year'] == lastyear) & (self.df['month'] == period_startmon) & (self.df['day'] == period_startday)]) == 0):
-#               print("Date {}-{}-{} does not seem to exist in data.".format(lastyear, period_startmon, period_startmon))
-#               exit(6)
 
         # create a new dataframe with dummy year to better select rolling period
         df_temp = self.df[['full_date', 'fwi']].copy()
@@ -213,12 +233,6 @@ class fwi_data:
 
         dates = []
 
-#       if (newyear):
-#           datefwi = datetime(lastyear-1, period_startmon, period_startday)
-#       else:
-#           datefwi = datetime(lastyear, period_startmon, period_startday)
-#
-#       enddate = datetime(lastyear, period_endmon, period_endday)
         datefwi = startdate
         
         rollingdateend = datetime(2000, period_startmon, period_startday)
