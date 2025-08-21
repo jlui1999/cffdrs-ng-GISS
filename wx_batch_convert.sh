@@ -35,10 +35,13 @@ while IFS=$',' read -r -a args; do
   wmoname=${args[1]}
   lat=${args[2]}
   lon=${args[3]}
+  if [ ${wmoid:0:1} = '#' ]; then
+    continue
+  fi
   echo "${indir}/${wmoid}${commonsuffix}"
   if [ -f "${indir}/${wmoid}${commonsuffix}" ] && (( $(echo "$lon > $lonmin" | bc) )) && (( $(echo "$lon < $lonmax" | bc) )) ; then
     # use wx_convert_filter.sh to do conversion
     echo ${wmoid}: $wmoname, $lat, $lon
-    $bash_source/wx_convert_filter.sh "${indir}/${wmoid}${commonsuffix}" $yearstart $yearend $wmoid $lat $lon "${outdir}/wx_${wmoid}${6}.csv"
+    $bash_source/wx_convert_filter.sh "${indir}/${wmoid}${commonsuffix}" $yearstart $yearend $wmoid $lat $lon "${outdir}/wx_${wmoid}${suffix}.csv"
   fi
 done < $listfiles

@@ -5,7 +5,9 @@
 # converts csv files to FWI format, filters by year(s) specified, extracts first entry above a threshold temperature, and ends with last entry above a threshold temperature
 
 # arguments: input file, start year, end year, id (name), latitude, longitude, output file
-#
+
+init_fwi_values=true
+
 if [ $# -ne 7 ]; then
   echo "Required arguments needed: 7, provided: $#"
   echo "<wx input file> <year start> <year end> <id/name> <lat> <long> <output file>"
@@ -28,13 +30,21 @@ thresh_temp=5
 # $8 WDSPD_KPH
 # $9 PREC_MM
 
-# get the first line number that is in the start year and also above 5 degrees Celcius
-linestart=$(awk -v ys="$yearstart" -v tt="$thresh_temp" -F, '$1 == ys && $5 != "NaN" && $5 > tt && $6 != "NaN" && $8 != "NaN" && $9 != "NaN" {print NR; exit}' $infile)
-#echo $linestart
+if $init_fwi_values; then
+  # get the first line number that is in the start year, above 5 degrees Celcius, and also has starting FWI values
+  outarr=($(awk -v ys="$yearstart" -v tt="$thresh_temp" -F, '$1 == ys && $5 != "NaN" && $5 > tt && $6 != "NaN" && $8 != "NaN" && $9 != "NaN" && $12 != "NaN" && $13 != "NaN" && $14 != "NaN" {print NR,$12,$13,$14; exit}' $infile))
+  linestart=${outarr[0]}
+  ffmc=${outarr[1]}
+  dmc=${outarr[2]}
+  dc=${outarr[3]}
+else
+  # get the first line number that is in the start year and also above 5 degrees Celcius
+  linestart=$(awk -v ys="$yearstart" -v tt="$thresh_temp" -F, '$1 == ys && $5 != "NaN" && $5 > tt && $6 != "NaN" && $8 != "NaN" && $9 != "NaN" {print NR; exit}' $infile)
+fi
 
 if [ -z $linestart ]; then
   echo "${id}: No valid lines found"
-  exit 0
+  exit 2
 fi
 
 # get the last line number
@@ -47,7 +57,11 @@ nolines=$(( $lineend-$linestart+1 ))
 # get the subset of data
 
 # header
-$(echo "id,lat,long,yr,mon,day,hr,temp,rh,ws,prec" | cat > $outfile)
+if $init_fwi_values; then
+  $(echo "id,lat,long,yr,mon,day,hr,temp,rh,ws,prec#${ffmc}#${dmc}#${dc}" | cat > $outfile)
+else
+  $(echo "id,lat,long,yr,mon,day,hr,temp,rh,ws,prec" | cat > $outfile)
+fi
 
 # prints the NaNs as-ias
 #$(head -n $lineend $infile | tail -n $nolines | awk -v OFS=',' -v of="$outfile" -v id="$id" -v lat="$lat" -v lon="$lon" -F, '{print id,lat,lon,$1,$2,$3,$4,$5,$6,$8,$9 >> of}')

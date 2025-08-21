@@ -31,17 +31,29 @@ if (len(sys.argv) < 3):
     print('Usage: python Tutorial_NGFWI.py <data file> <output file> [ffmc] [dmc] [dc]')
     exit()
 elif (len(sys.argv) == 6):
-    ffmc = sys.argv[3]
-    dmc = sys.argv[4]
-    dc = sys.argv[5]
+    ffmc = float(sys.argv[3])
+    dmc = float(sys.argv[4])
+    dc = float(sys.argv[5])
     initializeCodes = True
 
 datafile = sys.argv[1] 
 outputfile = sys.argv[2]
 
+# command line FWI starting codes will override starting codes read from file
+if (not initializeCodes):
+    with open(datafile, mode='r') as d:
+        header = d.readline().strip()
+        # the header may or may not have a starting FWI codes placed after the last row as a comment
+        headerarr = header.split('#')
+        if (len(headerarr) == 4):
+            ffmc = float(headerarr[1])
+            dmc = float(headerarr[2])
+            dc = float(headerarr[3])
+            initializeCodes = True
+
 ### Load the input weather station file ###
 # Specify the file path if wx_prf.csv is not in working directory
-data = pd.read_csv(datafile)
+data = pd.read_csv(datafile, comment='#')
 
 # Print the first 5 rows, data should contain 11 columns:
 #     id        lat       long    yr  mon  day  hr   temp     rh      ws  prec   
@@ -86,6 +98,7 @@ print(utc)
 # Make sure to specify the corresponding UTC offsets for different stations.
 # Default starting FWI codes are: ffmc_old = 85, dmc_old = 6, dc_old = 15
 if (initializeCodes):
+    print("Starting FWI run with starting codes FFMC={}, DMC={}, DC={}".format(ffmc, dmc, dc))
     data_fwi = hFWI(data, utc, ffmc_old=ffmc, dmc_old=dmc, dc_old=dc)
 else:
     data_fwi = hFWI(data, utc)

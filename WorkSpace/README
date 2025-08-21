@@ -92,9 +92,11 @@ wx_convert_filter.sh: Converts data to a format the FWI scripts can read.
       ws  Wind speed in kilometres per hour (km/hr), number
       prec  Precipitation (rain) measured in millimetres (mm), number
 
+  The script will fetch from the data file the first and last lines above a threshold temperature (5 degrees C), and everything in between. This script also has an internal toggle 'init_fwi_values' to get the starting FWI codes. With 'init_fwi_values' set to true, the first line the script will fetch is the first line above the threshold temperature and has all FWI codes: FFMC, DMC, DC.
+
   NOTE: no output will be given if no line exists where all variables temp, rh, ws, prec are valid values (not NaN). Internally, this script will fill in NaNs with the previous value. This script will also check for discontinuities in hourly data (where data is missing for an hour or where a duplicate entry exists).
 
-wx_batch_convert.sh: Batch converts data by calling wx_convert_filter.sh. Batch conversion will take places for files within a bounding longitude vaguely corresponding to Canada (-140 to -50).
+wx_batch_convert.sh: Batch converts data by calling wx_convert_filter.sh. Batch conversion will take places for files within a bounding longitude vaguely corresponding to Canada (-140 to -50). Batch conversion will ignore lines in the imput .csv list of files with a # in front.
 
   Arguments:
     - CSV list of files, in the format of

@@ -19,20 +19,20 @@ library(lutz)
 
 args = commandArgs(trailingOnly=TRUE)
 print(args)
-numargs = length(args)
+numargs <- length(args)
 if (numargs < 2) {
   print('Usage: Rscript Tutorial_NGFWI.R <data file> <output file> [ffmc] [dmc] [dc]')
   quit()
 }
 
-datafile = args[1]
-outputfile = args[2]
+datafile <- args[1]
+outputfile <- args[2]
 
 if.initializeCodes = FALSE
 if (numargs == 5) {
-  ffmc = args[3]
-  dmc = args[4]
-  dc = args[5]
+  ffmc <- as.numeric(args[3])
+  dmc <- as.numeric(args[4])
+  dc <- as.numeric(args[5])
   if.initializeCodes = TRUE
 }
 
@@ -57,6 +57,22 @@ getwd()
 # change the working directory with setwd() to that folder.
 # setwd("\\")
 
+# command line FWI starting codes will override starting codes read from file
+
+if (!if.initializeCodes) {
+  d <- file(datafile,"r")
+  header <- readLines(d,n=1)
+  close(d)
+  # the header may or may not have a starting FWI codes placed after the last row as a comment
+  headerarr <- strsplit(header, "#")
+  if (length(headerarr[[1]]) == 4) {
+    ffmc = as.numeric(headerarr[[1]][2])
+    dmc = as.numeric(headerarr[[1]][3])
+    dc = as.numeric(headerarr[[1]][4])
+    if.initializeCodes = TRUE
+  }
+}
+
 # Load the source files containing the variables and functions to calculate FWI2025.
 source(paste0(Rpath, "/NG_FWI.r"))
 source(paste0(Rpath, "/util.r"))
@@ -65,7 +81,7 @@ source(paste0(Rpath, "/daily_summaries.R"))
 ### Load the input weather station file ###
 # Specify the file path if wx_prf.csv is not in working directory
 #data <- read.csv('wx_prf.csv')
-data <- read.csv(datafile)
+data <- read.csv(datafile, comment.char="#")
 
 # Print the column names, data should contain the following 11 columns:
 # id, lat, long, yr, mon, day, hr, temp, rh, ws, prec
@@ -102,6 +118,7 @@ utc
 # Make sure to specify the corresponding UTC offsets for different stations.
 # Default starting FWI codes are: ffmc_old = 85, dmc_old = 6, dc_old = 15
 if (if.initializeCodes) {
+  sprintf("Starting FWI run with starting codes FFMC=%.1f, DMC=%.1f, DC=%.1f", ffmc, dmc, dc)
   data_fwi <- hFWI(data, utc, ffmc_old=ffmc, dmc_old=dmc, dc_old=dc)
 } else {
   data_fwi <- hFWI(data, utc)
