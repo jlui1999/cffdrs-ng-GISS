@@ -76,14 +76,15 @@ smooth_5pt <- function(source) {
 #' @param   reset_hr  the new boundary hour instead of midnight (default 5)
 #' @return            pseudo-date including year and ordinal day of the form "YYYY-D"
 pseudo_date <- function(yr, mon, day, hr, reset_hr = 5) {
+  d <- make_date(yr, mon, day)
   if (hr < reset_hr) {
-    adjusted_jd <- julian(mon, day) - 1
+    adjusted_jd <- as.integer(yday(d)) - 1
   } else {
-    adjusted_jd <- julian(mon, day)
+    adjusted_jd <- as.integer(yday(d))
   }
 
   if (adjusted_jd == 0) {  # where Jan 1 shifts to 0, bump it to end of previous year
-    adjusted_jd <- julian(12, 31)
+    adjusted_jd <- as.integer(yday(make_date(yr - 1, 12, 31)))
     adjusted_yr <- yr - 1
   } else {
     adjusted_yr <- yr
@@ -97,7 +98,7 @@ pseudo_date <- function(yr, mon, day, hr, reset_hr = 5) {
 #' @param     hourly_FWI    hourly FWI dataframe (output of hFWI())
 #' @param     reset_hr      new boundary to define day to summarize (default 5)
 #' @param     silent        suppresses informative print statements (default False)
-#' @param     round_out     decimals to truncate output to, None for none (default 4)
+#' @param     round_out     decimals to truncate output to, NA for none (default 4)
 #' @return                  daily summary of peak FWI conditions
 generate_daily_summaries <- function(hourly_FWI, reset_hr = 5,
   silent = FALSE, round_out = 4) {
@@ -127,10 +128,12 @@ generate_daily_summaries <- function(hourly_FWI, reset_hr = 5,
 
   for (stn in unique(hourly_data[, id])) {
     if (!silent) {
-      print(paste("Summarizing", stn, "to daily"))
+      writeLines(paste("Summarizing", stn, "to daily"))
     }
     by_stn <- hourly_data[id == stn]
     by_stn[, pseudo_DATE := Vectorize(pseudo_date)(yr, mon, day, hr, reset_hr)]
+    # first year for transition btwn matted and standing (esp if southern hemisphere)
+    DATE_GRASS_STANDING <- make_date(by_stn[1, yr], MON_STANDING, DAY_STANDING)
 
     for (p_date in unique(by_stn[, pseudo_DATE])) {
       by_date <- by_stn[pseudo_DATE == p_date]
@@ -152,7 +155,8 @@ generate_daily_summaries <- function(hourly_FWI, reset_hr = 5,
       }
 
       # calculate some extra variables before creating datatable all at once
-      if (by_date[1, julian(mon, day)] < DATE_GRASS) {
+      d <- make_date(by_date[1, yr], by_date[1, mon], by_date[1, day])
+      if (GRASS_TRANSITION && d < DATE_GRASS_STANDING) {
         standing <- FALSE
         mcgfmc <- by_date[peak_time, mcgfmc_matted]
       } else {
@@ -196,10 +200,10 @@ generate_daily_summaries <- function(hourly_FWI, reset_hr = 5,
   }
 
   # format decimal places of output columns
-  if (!is.na(round_out)) {
+  if (!(is.na(round_out) || round_out == "NA")) {
     outcols <- c("ffmc", "dmc", "dc", "isi", "bui", "fwi", "dsr",
       "gfmc", "gsi", "gfwi", "ws_smooth", "isi_smooth", "gsi_smooth")
-    set(results, j = outcols, value = round(results[, ..outcols], round_out))
+    set(results, j = outcols, value = round(results[, ..outcols], as.integer(round_out)))
   }
 
   if (wasDf) {
@@ -219,7 +223,7 @@ if ("--args" %in% commandArgs() && sys.nframe() == 0) {
   input <- args[1]
   output <- args[2]
   # load optional arguments if provided, or set to default
-  if (length(args) >= 3) reset_hr <- args[3]
+  if (length(args) >= 3) reset_hr <- as.integer(args[3])
   else reset_hr <- 5
   if (length(args) >= 4) silent <- as.logical(args[4])
   else silent <- FALSE

@@ -1,45 +1,62 @@
 # Computes hourly FWI indices for an input hourly weather stream
+
+### Import packages ###
 import datetime
 import logging
 import argparse
 from math import exp, log, pow, sqrt
-
 import pandas as pd
 
+# Import from other CFFDRS code files
 import util
-
 
 logger = logging.getLogger("cffdrs")
 logger.setLevel(logging.WARNING)
 
-DAILY_K_DMC_DRYING = 1.894
-DAILY_K_DC_DRYING = 3.937
+### Variable Definitions ###
+# Only change these if you know what you are doing, or
+# reach out to the CFS Fire Danger Group for more info
 
-HOURLY_K_DMC = 2.22
-HOURLY_K_DC = 0.085
-DMC_OFFSET_TEMP = 0.0
-DC_OFFSET_TEMP = 0.0
-
-DC_DAILY_CONST = 0.36
-DC_HOURLY_CONST = DC_DAILY_CONST / DAILY_K_DC_DRYING
-
-OFFSET_SUNRISE = 0 #2.5
-OFFSET_SUNSET = 0 #0.5
-
-# Fuel Load (kg/m^2)
-DEFAULT_GRASS_FUEL_LOAD = 0.35
-
-# default startup values
+# Startup moisture code values
 FFMC_DEFAULT = 85.0
 DMC_DEFAULT = 6.0
 DC_DEFAULT = 15.0
 
+# FFMC moisture content to code conversion factor
 MPCT_TO_MC = 250.0 * 59.5 / 101.0
+
+# Wetting variables
+DAILY_K_DMC_DRYING = 1.894
+DAILY_K_DC_DRYING = 3.937
+DC_DAILY_CONST = 0.36
+DC_HOURLY_CONST = DC_DAILY_CONST / DAILY_K_DC_DRYING
+
+# Precipitation intercept
 FFMC_INTERCEPT = 0.5
 DMC_INTERCEPT = 1.5
 DC_INTERCEPT = 2.8
 
-DATE_GRASS = 181
+# Drying variables
+OFFSET_SUNRISE = 0
+OFFSET_SUNSET = 0
+HOURLY_K_DMC = 2.22
+HOURLY_K_DC = 0.015
+DMC_OFFSET_TEMP = 0.0
+DC_OFFSET_TEMP = 0.0
+
+# Grassland fuel load (grass_fuel_load, kg/m^2)
+DEFAULT_GRASS_FUEL_LOAD = 0.35
+
+# Transition from matted to standing grass in a calendar year (default July 1st)
+GRASS_TRANSITION = True  # default True, False for GFMC to always be standing
+MON_STANDING = 7
+DAY_STANDING = 1
+
+# For input data that can't be split by year (i.e. data runs between Dec 31 - Jan 1)
+# If True, every station's data needs to be sequential (one continuous run)
+CONTINUOUS_MULTIYEAR = False  # default False, True to not split by year
+
+### Functions ###
 
 ##
 # Convert to fine fuel moisture content (%)
@@ -169,7 +186,9 @@ def duff_moisture_code(
     # drying
     sunrise_start = sunrise + OFFSET_SUNRISE
     sunset_start = sunset + OFFSET_SUNSET
-    if (sunrise_start <= hr <= sunset_start):  # daytime
+    # since sunset can be > 24, in some cases we ignore change between days and check hr + 24
+    if (sunrise_start <= hr <= sunset_start or
+        (hr < 6 and sunrise_start <= hr + 24 <= sunset_start)):  # daytime
         if temp < 0:
             temp = 0.0
         rk = HOURLY_K_DMC * 1e-4 * (temp + DMC_OFFSET_TEMP) * (100.0 - rh)
@@ -210,7 +229,7 @@ def drought_code(
             rw = (prec_cumulative_prev + prec) * 0.83 - 1.27
         else:  # previously passed threshold
             rw = prec * 0.83
-        mr = last_mcdc + 3.937 * rw / 2.0
+        mr = last_mcdc + DAILY_K_DC_DRYING * rw / 2.0
     else:
         mr = last_mcdc
     
@@ -220,11 +239,12 @@ def drought_code(
     # drying
     sunrise_start = sunrise + OFFSET_SUNRISE
     sunset_start = sunset + OFFSET_SUNSET
-    if (sunrise_start <= hr <= sunset_start):  # daytime
+    # since sunset can be > 24, in some cases we ignore change between days and check hr + 24
+    if (sunrise_start <= hr <= sunset_start or
+        (hr < 6 and sunrise_start <= hr + 24 <= sunset_start)):  # daytime
         offset = 3.0
-        mult = 0.015
         if temp > 0:
-            pe = mult * temp + offset / 16.0
+            pe = HOURLY_K_DC * (temp + DC_OFFSET_TEMP) + offset / 16.0
         else:
             pe = 0
         invtau = pe / 400.0
@@ -273,15 +293,10 @@ def buildup_index(dmc, dc):
 # @param bui             Build-up Index
 # @return                Fire Weather Index
 def fire_weather_index(isi, bui):
-    bb = (
-        0.1
-        * isi
-        * (
-            ((1000 / (25 + 108.64 / exp(0.023 * bui))))
-            if bui > 80
-            else ((0.626 * pow(bui, 0.809) + 2))
-        )
-    )
+    if bui > 80:
+        bb = 0.1 * isi * 1000 / (25 + 108.64 / exp(0.023 * bui))
+    else:
+        bb = 0.1 * isi * (0.626 * pow(bui, 0.809) + 2)
     fwi = bb if bb <= 1 else exp(2.72 * pow(0.434 * log(bb), 0.647))
     return fwi
 
@@ -432,7 +447,7 @@ def mcgfmc_to_gfmc(mc, cur, wind):
     # /*   convert to code with FF-scale */
     # return (59.5*(250.0-egmc)/(MPCT_TO_MC + egmc))
     if egmc > 250.0:
-      egmc = 250.0
+        egmc = 250.0
     return mcffmc_to_ffmc(egmc)
 
 def matted_grass_spread_ROS(ws, mc, cur):
@@ -569,6 +584,8 @@ def _stnHFWI(
     mcgfmc_standing_old,
     prec_cumulative,
     canopy_drying):
+    if not CONTINUOUS_MULTIYEAR and len(w["yr"].unique()) != 1:
+        logger.warning("WARNING: _stnHFWI() function received more than one year")
     if not util.is_sequential_hours(w):
         raise RuntimeError("Expected hourly weather input to be sequential")
     if len(w["id"].unique()) != 1:
@@ -581,7 +598,7 @@ def _stnHFWI(
         raise RuntimeError("Expected a single UTC offset (timezone) each station year")
     if len(w["grass_fuel_load"].unique()) != 1:
         raise RuntimeError("Expected a single grass_fuel_load value each station year")
-    r = w.loc[:]
+    r = w.copy()
     if mcffmc_old == None or mcffmc_old == "None":
         if ffmc_old == None or ffmc_old == "None":
             raise ValueError("Either ffmc_old OR mcffmc_old should be NA, not both")
@@ -599,6 +616,12 @@ def _stnHFWI(
     # FIX: just use loop for now so it matches C code
     canopy = {"rain_total_prev": prec_cumulative,
         "drying_since_intercept": canopy_drying}
+    # transition btwn matted and standing grassland fuel
+    # does not account for fire seasons continuous across multiple years
+    DATE_GRASS_STANDING = datetime.date(r.at[0, "yr"], MON_STANDING, DAY_STANDING)
+    if DATE_GRASS_STANDING < r.at[0, "date"]:  # use next year if date already passed
+        DATE_GRASS_STANDING = datetime.date(r.at[0, "yr"] + 1,
+            MON_STANDING, DAY_STANDING)
     results = []
     for i in range(len(r)):
         cur = r.iloc[i].to_dict()
@@ -675,7 +698,8 @@ def _stnHFWI(
             cur["grass_fuel_load"]
         )        
         
-        if (util.julian(cur["mon"], cur["day"]) < DATE_GRASS):
+        # check if matted to standing transition happened already
+        if GRASS_TRANSITION and cur["date"] < DATE_GRASS_STANDING:
             standing = False
             mcgfmc = mcgfmc_matted
         else:
@@ -692,14 +716,15 @@ def _stnHFWI(
         cur["canopy_drying"] = canopy["drying_since_intercept"]
         # append results for this row
         results.append(cur)
+    
     r = pd.DataFrame(results)
-    del r["index"]
     return r
 
 ##
 # Calculate hourly FWI indices from hourly weather stream.
 #
 # @param    df_wx               hourly values weather stream
+# @param    timezone            UTC offset (default None for column provided in df_wx)
 # @param    ffmc_old            previous value for FFMC (startup 85, None for mcffmc_old)
 # @param    mcffmc_old          previous value mcffmc (default None for ffmc_old input)
 # @param    dmc_old             previous value for DMC (startup 6)
@@ -713,6 +738,7 @@ def _stnHFWI(
 # @return                       hourly values FWI and weather stream
 def hFWI(
     df_wx,
+    timezone = None,
     ffmc_old = FFMC_DEFAULT,
     mcffmc_old = None,
     dmc_old = DMC_DEFAULT,
@@ -720,7 +746,7 @@ def hFWI(
     mcgfmc_matted_old = ffmc_to_mcffmc(FFMC_DEFAULT),
     mcgfmc_standing_old = ffmc_to_mcffmc(FFMC_DEFAULT),
     prec_cumulative = 0.0,
-    canopy_drying = 0.0,
+    canopy_drying = 0,
     silent = False,
     round_out = 4):
     wx = df_wx.copy()
@@ -728,18 +754,17 @@ def hFWI(
     wx.columns = map(str.lower, wx.columns)
     og_names = wx.columns
     # check for required columns
-    if not all(x in wx.columns for x in 
-        ['lat', 'long', 'timezone', 'yr', 'mon', 'day', 'hr',
-        'temp', 'rh', 'ws', 'prec']):
-        raise RuntimeError("Missing required input column(s)")
-    # check for one hour run and startup moisture all set to default
-    if (df_wx.shape[0] == 1 and
-        ffmc_old == FFMC_DEFAULT and mcffmc_old == None and
-        dmc_old == DMC_DEFAULT and dc_old == DC_DEFAULT and
-        mcgfmc_matted_old == ffmc_to_mcffmc(FFMC_DEFAULT) and
-        mcgfmc_standing_old == ffmc_to_mcffmc(FFMC_DEFAULT)):
-        logger.warning("Warning:\nStartup moisture values set to default" +
-            " (instead of previous) in a one hour run")
+    req_cols = ["lat", "long", "yr", "mon", "day", "hr", "temp", "rh", "ws", "prec"]
+    for col in req_cols:
+        if not col in wx.columns:
+            raise RuntimeError("Missing required input column: " + col)
+    # check timezone
+    if timezone == None:
+        if not "timezone" in wx.columns:
+            raise RuntimeError("Either provide a timezone column or " +
+                "specify argument in hFWI()")
+    else:
+        wx["timezone"] = float(timezone)
     # check for optional columns that have a default
     had_stn = "id" in og_names
     had_minute = "minute" in og_names
@@ -748,26 +773,22 @@ def hFWI(
     if not had_minute:
         wx["minute"] = 0
     # check for optional columns that can be calculated
-    had_date = "date" in og_names
     had_timestamp = "timestamp" in og_names
-    if not had_date:
-        wx["date"] = wx.apply(
-            lambda row: f'{row["yr"]:04d}-{row["mon"]:02d}-{row["day"]:02d}', axis=1
-        )
+    had_date = "date" in og_names
     if not had_timestamp:
         wx["timestamp"] = wx.apply(
             lambda row: datetime.datetime(
                 row["yr"], row["mon"], row["day"], row["hr"], row["minute"]
                 ), axis=1
             )
+    if not had_date:
+        wx["date"] = wx["timestamp"].apply(lambda ts: ts.date())
     if not "grass_fuel_load" in og_names:
         wx["grass_fuel_load"] = DEFAULT_GRASS_FUEL_LOAD
     if not "percent_cured" in og_names:
-        wx["percent_cured"] = wx.apply(lambda row: util.seasonal_curing(
-            util.julian(row["mon"], row["day"])), axis=1)
+        wx["percent_cured"] = wx.apply(lambda row:
+            util.seasonal_curing(row["yr"], row["mon"], row["day"]), axis = 1)
     if not "solrad" in wx.columns:
-        if not silent:
-            print("Solar Radiation not provided so will be calculated")
         needs_solrad = True
     else:
         needs_solrad = False
@@ -782,7 +803,7 @@ def hFWI(
         raise ValueError("All precipitation (prec) must be >= 0")
     if not (all(wx["mon"] >= 1) and all(wx["mon"] <= 12)):
         raise ValueError("All months (mon) must be between 1-12")
-    if (not needs_solrad) and (not all(wx['solrad'] >= 0)):
+    if (not needs_solrad) and (not all(wx["solrad"] >= 0)):
         raise ValueError("All solar radiation (solrad) must be >= 0")
     if ("percent_cured" in og_names) and (not (
         all(wx["percent_cured"] >= 0) and all(wx["percent_cured"] <= 100))):
@@ -807,28 +828,45 @@ def hFWI(
     if not (dc_old >= 0):
         raise ValueError("dc_old must be >= 0")
     
-    # loop over every station year
+    # print message with startup values used
+    if not silent:
+        print("\n########\nStartup values used:")
+        print("FFMC =", ffmc_old, "or mcffmc =", mcffmc_old, "%")
+        print("DMC =", dmc_old, "and DC =", dc_old)
+        print(f"mcgfmc matted = {mcgfmc_matted_old:.4f} % " +
+            f"and standing = {mcgfmc_standing_old:.4f} %")
+        print("cumulative precipitation =", prec_cumulative,
+            "mm and canopy drying =", canopy_drying, "\n")
+    
+    # loop over every station year if not continuous multiyear data
     results = None
-    for idx, by_year in wx.groupby(["id", "yr"], sort = False):
-        if not silent:
+    split = ["id", "yr"]
+    if CONTINUOUS_MULTIYEAR:
+        split = ["id"]  # if continuous multiyear data, only split by ID
+    
+    for idx, by_year in wx.groupby(split, sort = False):
+        if not silent and not CONTINUOUS_MULTIYEAR:
             print("Running " + str(idx[0]) + " for " + str(idx[1]))
+        elif not silent and CONTINUOUS_MULTIYEAR:
+            print("Running station " + str(idx[0]))
         logger.debug(f"Running for {idx}")
-        w = by_year.reset_index()
+        w = by_year.reset_index(drop = True)
         w = util.get_sunlight(w, get_solrad = needs_solrad)
         r = _stnHFWI(w, ffmc_old, mcffmc_old, dmc_old, dc_old,
             mcgfmc_matted_old, mcgfmc_standing_old,
             prec_cumulative, canopy_drying)
         results = pd.concat([results, r])
+    results.reset_index(drop = True, inplace = True)
     
     # remove optional variables that we added
     if not had_stn:
         results = results.drop(columns = "id")
     if not had_minute:
         results = results.drop(columns = "minute")
-    if not had_date:
-        results = results.drop(columns = "date")
     if not had_timestamp:
         results = results.drop(columns = "timestamp")
+    if not had_date:
+        results = results.drop(columns = "date")
 
     # round decimal places of output columns
     if not (round_out == None or round_out == "None"):
@@ -838,7 +876,14 @@ def hFWI(
             "prec_cumulative", "canopy_drying"]
         if "solrad" not in og_names:
             outcols.insert(0, "solrad")
-        results[outcols] = results[outcols].map(round, ndigits = round_out)
+        if "percent_cured" not in og_names:
+            outcols.insert(0, "percent_cured")
+        if "grass_fuel_load" not in og_names:
+            outcols.insert(0, "grass_fuel_load")
+        results[outcols] = results[outcols].map(round, ndigits = int(round_out))
+
+    if not silent:
+        print("########\n")
 
     return results
 
@@ -848,6 +893,8 @@ if __name__ == "__main__":
     # add all inputs to hFWI
     parser.add_argument("input", help = "Input csv data file")
     parser.add_argument("output", help = "Output csv file name and location")
+    parser.add_argument("timezone", nargs = "?", default = None,
+        help = "UTC offset (default None for column provided in input)")
     parser.add_argument("ffmc_old", nargs = "?", default = FFMC_DEFAULT,
         help = "Starting value for FFMC (startup 85, None for mcffmc_old)")
     parser.add_argument("mcffmc_old", nargs = "?", default = None,
@@ -872,7 +919,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     df_in = pd.read_csv(args.input)
-    df_out = hFWI(df_in, args.ffmc_old, args.mcffmc_old,
+    df_out = hFWI(df_in, args.timezone, args.ffmc_old, args.mcffmc_old,
         args.dmc_old, args.dc_old, args.mcgfmc_matted_old, args.mcgfmc_standing_old,
         args.prec_cumulative, args.canopy_drying, args.silent, args.round_out)
     df_out.to_csv(args.output, index = False)

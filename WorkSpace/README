@@ -18,8 +18,8 @@ from pytz import timezone
 import logging
 
 To run tutorial code:
-- python:   python ../Tutorial_NGFWI.py ../data/wx_prf.csv PRF_py.csv
-- R:        Rscript ../Tutorial_NGFWI.R ../data/wx_prf.csv PRF_R.csv
+- python:   python ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_py.csv
+- R:        Rscript ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_R.csv
 
 FWI may be initialized with FFMC, DMC, and DC codes as arguments placed after the output file. By default, this is FFMC=85, DMC=6, DC=15. FWI can also be initialized from the data .csv file itself on the header line as #FFMC#DMC#DC place at the end of the header (as outputted by wx_convert_filter.sh).
 
@@ -73,16 +73,17 @@ wx_convert_filter.sh: Converts data to a format the FWI scripts can read.
 
       Outputs will be given in the format of
 
-      id,lat,long,yr,mon,day,hr,temp,rh,ws,prec
-      718870-99999,50.702,-120.444,2024,1,29,0,6.2,87.6321162616729,14.76,0.7
-      718870-99999,50.702,-120.444,2024,1,29,1,5,93.2480954480589,18.36,0.7
-      718870-99999,50.702,-120.444,2024,1,29,2,5,86.902676258922,14.76,0.7
-      718870-99999,50.702,-120.444,2024,1,29,3,4.8,91.2893265574923,20.52,0.7
-      718870-99999,50.702,-120.444,2024,1,29,4,5,86.902676258922,22.32,0.7
+      id,lat,long,timezone,yr,mon,day,hr,temp,rh,ws,prec
+      718870-99999,50.702,-120.444,-8,2024,1,29,0,6.2,87.6321162616729,14.76,0.7
+      718870-99999,50.702,-120.444,-8,2024,1,29,1,5,93.2480954480589,18.36,0.7
+      718870-99999,50.702,-120.444,-8,2024,1,29,2,5,86.902676258922,14.76,0.7
+      718870-99999,50.702,-120.444,-8,2024,1,29,3,4.8,91.2893265574923,20.52,0.7
+      718870-99999,50.702,-120.444,-8,2024,1,29,4,5,86.902676258922,22.32,0.7
 
       id  Weather station identifier, a unique number for the station, text or number
       lat Latitude of weather station, decimal degrees (°) (double precision)
       long  Longitude of weather station, decimal degrees (°) (double precision)
+      timezone UTC timezone of weather station, number
       yr  Year of weather station reading, number YYYY
       mon Month of weather station reading, number M or MM (must be consistent throughout the dataset)
       day Day of weather station reading, number DD or D (must be consistent throughout the dataset)

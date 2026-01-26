@@ -2,21 +2,12 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <stdbool.h>
 #include <stdarg.h>
+#include <time.h>
+#define NDEBUG
 
-/* abs() isn't working either */
-double _abs(double x)
-{
-  /* work around negative 0 as well */
-  return (0 == x) ? 0.0 : ((x < 0) ? -x : x);
-}
 
-/* copysign() doesn't seem to work for some reason */
-double _copysign(double x, double y)
-{
-  /* >=0 to account for negative zero */
-  return _abs(x) * ((y >= 0) ? 1 : -1);
-}
 
 double _max(double x, double y)
 {
@@ -42,101 +33,243 @@ double findrh(double q, double temp)
   return (100 * cur_vp / (6.108 * exp(17.27 * temp / (temp + 237.3))));
 }
 
-/*
- * Calculate Hargreaves hourly surface open-site shortwave radiation in kW/m^2.
- */
-void solar_radiation(double lat, double lon, int mon, int day, double timezone, double temp_range, struct double_24hr *solrad)
+double seasonal_curing(int yr, int mon, int day, int start_mon, int start_day)
 {
-  int jd = julian(mon, day);
-  solar_radiation_julian(lat, lon, jd, timezone, temp_range, solrad);
-}
+  static double PERCENT_CURED[] = {
+    96.0,  // "winter" cured value
+    95.0,
+    93.0,
+    92.0,
+    90.5,
+    88.4,
+    84.4,
+    78.1,
+    68.7,
+    50.3,
+    32.9,
+    23.0,
+    22.0,
+    21.0,
+    20.0,
+    25.7,
+    35.0,
+    43.0,
+    49.8,
+    60.0,
+    68.0,
+    72.0,
+    75.0,
+    78.9,
+    86.0,
+    96.0  // "winter" cured value for rest of year
+  };
 
-void solar_radiation_julian(double lat, double lon, int jd, double timezone, double temp_range, struct double_24hr *solrad)
-{
-  /*
-    Completely disconnect from sunrise/sunset code so nothing changes there
-     if we change how solar radiation is calculated
-  */
-  double dechour = 12.0;
-  double fracyear = 2.0 * M_PI / 365.0 * ((float)(jd)-1.0 + ((float)(dechour)-12.0) / 24.0);
-  double eqtime = 229.18 * (0.000075 + 0.001868 * cos(fracyear) - 0.032077 * sin(fracyear) - 0.014615 * cos(2.0 * fracyear) - 0.040849 * sin(2.0 * fracyear));
-  double decl = 0.006918 - 0.399912 * cos(fracyear) + 0.070257 * sin(fracyear) - 0.006758 * cos(fracyear * 2.0) + 0.000907 * sin(2.0 * fracyear) - 0.002697 * cos(3.0 * fracyear) + 0.00148 * sin(3.0 * fracyear);
-  double timeoffset = eqtime + 4 * lon - 60 * timezone;
-  struct double_24hr cos_zenith;
-  double sum_24hr_solrad_ext = 0;
-  double sum_24hr_cos_zenith = 0;
-  /*
-    calculating solar radiation using Hargraeves model suggested at:
-    (https://github.com/derekvanderkampcfs/open_solar_model/tree/V1#conclusions)
-  */
-  for (int h = 0; h < 24; ++h)
-  {
-    double tst = (float)h * 60.0 + timeoffset;
-    double hourangle = tst / 4 - 180;
-    /* Extraterrestrial solar radiation in kW/m^2 */
-    cos_zenith.hour[h] = cos(_min(M_PI / 2,
-                                  acos(sin(lat * M_PI / 180) * sin(decl) + cos(lat * M_PI / 180) * cos(decl) * cos(hourangle * M_PI / 180))));
-    sum_24hr_cos_zenith += cos_zenith.hour[h];
-    double solrad_ext = 1.367 * cos_zenith.hour[h];
-    /* Daily total of Extra. Solar Rad in kJ/m^2/day */
-    sum_24hr_solrad_ext += (solrad_ext * 3600);
+  // find previous green up start date (year - 1 or year)
+  struct tm date = {
+    .tm_year = yr - 1900,
+    .tm_mon = mon - 1,
+    .tm_mday = day,
+    .tm_isdst = 0};
+  struct tm greenup = {
+    .tm_year = yr - 1900,
+    .tm_mon = start_mon - 1,
+    .tm_mday = start_day,
+    .tm_isdst = 0};
+  
+  int shift = difftime(mktime(&date), mktime(&greenup)) / 86400;  // 86400s / day
+  if (shift < 0) {
+    greenup.tm_year = yr - 1 - 1900;
+    shift = difftime(mktime(&date), mktime(&greenup)) / 86400;
   }
-  /* Daily surface Solar Rad in kJ/m^2/day */
-  double sum_24hr_solrad = 0.11 * sum_24hr_solrad_ext * (pow(temp_range, 0.59));
-  /* Hargreaves hourly surface solar rad in kW/m^2 */
-  for (int h = 0; h < 24; ++h)
-  {
-    solrad->hour[h] = _max(
-        0,
-        cos_zenith.hour[h] / sum_24hr_cos_zenith * sum_24hr_solrad / 3600);
+
+  int days_in = shift + 1;  // start date is first non-winter value (not 0th)
+
+  // check if date is in green phase or winter (cured) phase
+  if (days_in < (sizeof(PERCENT_CURED) / sizeof(PERCENT_CURED[0]) - 1) * 10) {
+    // linear interpolation between every 10-day value
+    double per_cur0 = PERCENT_CURED[days_in / 10];
+    double per_cur1 = PERCENT_CURED[days_in / 10 + 1];
+    double period_frac = (days_in % 10) / 10.0;
+    double result = per_cur0 + (per_cur1 - per_cur0) * period_frac;
+    return result;
+  } else {
+    return PERCENT_CURED[0];
   }
 }
 
-/*
- * Find sunrise and sunset for a given date and location.
- */
-void sunrise_sunset(double lat, double lon, int mon, int day, double timezone, double *sunrise, double *sunset)
-{
-  int jd = julian(mon, day);
-  sunrise_sunset_julian(lat, lon, jd, timezone, sunrise, sunset);
+bool is_leap(int yr) {
+  return (yr % 4 == 0 && yr % 100 != 0 || yr % 400 == 0);
 }
 
-void sunrise_sunset_julian(double lat, double lon, int jd, double timezone, double *sunrise, double *sunset)
+int julian(int yr, int mon, int day)
 {
-  /*
-  this routine approximately calcualtes sunrise and sunset and daylength
-  Really any routine like this could be used,  some are more precise than others.
+    if (mon == 1) {  // January
+        return day;
+    } else if (mon == 2) {  // February
+        return day + 31;
+    } else {  // March-December depends on leap year, use algorithm
+        int i;
+        if (is_leap(yr)) {
+            i = 2;
+        } else {
+            i = 3;
+        }
+        return (30 * (mon - 1) + floor(0.6 * (mon + 1)) - i + day);
+    }
+}
 
-  bmw
-  */
+double single_hour_solrad_estimation(struct row *r)
+{
   double dechour = 12.0;
-  double fracyear = 2.0 * M_PI / 365.0 * ((float)(jd)-1.0 + (dechour - 12.0) / 24.0);
-  double eqtime = 229.18 * (0.000075 + 0.001868 * cos(fracyear) - 0.032077 * sin(fracyear) - 0.014615 * cos(2.0 * fracyear) - 0.040849 * sin(2.0 * fracyear));
-  double decl = 0.006918 - 0.399912 * cos(fracyear) + 0.070257 * sin(fracyear) - 0.006758 * cos(fracyear * 2.0) + 0.000907 * sin(2.0 * fracyear) - 0.002697 * cos(3.0 * fracyear) + 0.00148 * sin(3.0 * fracyear);
+  // .tm_yday is already 0-indexed (i.e. Jan 1st = 0)
+  double fracyear = 2.0 * M_PI * (r->timestamp.tm_yday + (dechour - 12.0) / 24.0);
+  if (is_leap(r->year)) {
+    fracyear = fracyear / 366.0;
+  } else {
+    fracyear = fracyear / 365.0;
+  }
+  double eqtime = 229.18 * (0.000075 +
+    0.001868 * cos(fracyear) - 0.032077 * sin(fracyear) -
+    0.014615 * cos(2.0 * fracyear) - 0.040849 * sin(2.0 * fracyear));
+  double decl = 0.006918 -
+    0.399912 * cos(fracyear) + 0.070257 * sin(fracyear) -
+    0.006758 * cos(fracyear * 2.0) + 0.000907 * sin(2.0 * fracyear) -
+    0.002697 * cos(3.0 * fracyear) + 0.00148 * sin(3.0 * fracyear);
+  double timeoffset = eqtime + 4.0 * r->lon - 60.0 * r->timezone;
+  double tst = ((double)r->hour) * 60.0 + timeoffset;
+  double hourangle = tst / 4.0 - 180.0;
+  double zenith = acos(sin(r->lat * M_PI / 180.0) * sin(decl) +
+    cos(r->lat * M_PI / 180.0) * cos(decl) * cos(hourangle * M_PI / 180.0));
+  zenith = _min(M_PI / 2.0, zenith);
+  double cos_zenith = cos(zenith);
+  double vpd = 6.11 * (1.0 - r->rh / 100.0) *
+    exp(17.29 * r->temp / (r->temp + 237.3));
+  
+  double solrad = cos_zenith * 0.92 * (1.0 - exp(-0.22 * vpd));
+  if (solrad < 1e-4) {
+    solrad = 0.0;
+  }
+  return solrad;
+}
+
+void sunrise_sunset(double lat, double lon, double timezone,
+  struct tm date, double *suntime)
+{
+  double dechour = 12.0;
+  // .tm_yday is already 0-indexed (i.e. Jan 1st = 0)
+  double fracyear = 2.0 * M_PI * (date.tm_yday + (dechour - 12.0) / 24.0);
+  if (is_leap(date.tm_year)) {
+    fracyear = fracyear / 366.0;
+  } else {
+    fracyear = fracyear / 365.0;
+  }
+  double eqtime = 229.18 * (0.000075 +
+    0.001868 * cos(fracyear) - 0.032077 * sin(fracyear) - 
+    0.014615 * cos(2.0 * fracyear) - 0.040849 * sin(2.0 * fracyear));
+  double decl = 0.006918 -
+    0.399912 * cos(fracyear) + 0.070257 * sin(fracyear) -
+    0.006758 * cos(fracyear * 2.0) + 0.000907 * sin(2.0 * fracyear) -
+    0.002697 * cos(3.0 * fracyear) + 0.00148 * sin(3.0 * fracyear);
   double timeoffset = eqtime + 4 * lon - 60 * timezone;
   double zenith = 90.833 * M_PI / 180.0;
-  /*
-   * FIX: is this some kind of approximation that can be wrong?
-   *       breaks with (67.1520291504819, -132.37538245496188)
-   */
-  double x_tmp = cos(zenith) / (cos(lat * M_PI / 180.0) * cos(decl)) - tan(lat * M_PI / 180.0) * tan(decl);
-  /* HACK: keep in range */
-  x_tmp = _max(-1, _min(1, x_tmp));
-  double halfday = 180.0 / M_PI * acos(x_tmp);
-  *sunrise = (720.0 - 4.0 * (lon + halfday) - eqtime) / 60 + timezone;
-  *sunset = (720.0 - 4.0 * (lon - halfday) - eqtime) / 60 + timezone;
+  double x_tmp = cos(zenith) / (cos(lat * M_PI / 180.0) * cos(decl)) -
+    tan(lat * M_PI / 180.0) * tan(decl);
+  x_tmp = _max(-1.0, _min(1.0, x_tmp));
+  double halfday = 180.0 * acos(x_tmp) / M_PI;
+
+  suntime[0] = (720.0 - 4.0 * (lon + halfday) - eqtime) / 60.0 + timezone;
+  suntime[1] = (720.0 - 4.0 * (lon - halfday) - eqtime) / 60.0 + timezone;
 }
 
-int julian(int mon, int day)
-{
-  static const int month[13] = {0, 31, 59, 90, 120, 151, 181, 212, 242, 273, 304, 334, 365};
-  return month[mon - 1] + day;
+void check_header_FWI(FILE *input, const char *header_req, struct flags *f) {
+
+  char header_full[200];
+
+  // add optional parameters for a full header
+  strcpy(header_full, header_req);
+  strcat(header_full, ",grass_fuel_load,percent_cured,solrad");
+
+  char in_buffer[200];  // limit input header to 200 characters
+  int in_buffer_len;
+
+  // read first line of file
+  fscanf(input, "%200s", in_buffer);  // limit input header to 200 characters
+  in_buffer_len = strlen(in_buffer);
+
+  if (in_buffer_len == 200) {  // limit input header to 200 characters
+    puts("Input header has 200 or more characters, remove columns or increase limit");
+    exit(1);
+  }
+
+  if (strncmp(header_req, in_buffer, strlen(header_req)) != 0) {
+    printf("Error: Missing required columns or didn't start in this order\n%s\n",
+      header_req);
+    exit(1);
+  }
+
+  if (in_buffer_len > strlen(header_full)) {
+    printf("Error: Input file header too long. Max possible columns are\n%s\n",
+      header_full);
+    exit(1);
+  }
+
+  // create all combinations of optional grass_fuel_load, percent_cured, solrad columns
+  char header_no_s[200];
+  strcpy(header_no_s, header_req);
+  strcat(header_no_s, ",grass_fuel_load,percent_cured");
+
+  char header_no_p[200];
+  strcpy(header_no_p, header_req);
+  strcat(header_no_p, ",grass_fuel_load,solrad");
+
+  char header_no_g[200];
+  strcpy(header_no_g, header_req);
+  strcat(header_no_g, ",percent_cured,solrad");
+
+  char header_no_ps[200];
+  strcpy(header_no_ps, header_req);
+  strcat(header_no_ps, ",grass_fuel_load");
+
+  char header_no_gs[200];
+  strcpy(header_no_gs, header_req);
+  strcat(header_no_gs, ",percent_cured");
+
+  char header_no_gp[200];
+  strcpy(header_no_gp, header_req);
+  strcat(header_no_gp, ",solrad");
+
+  // check if in_buffer matches any combination of optional headers
+  if (strcmp(header_full, in_buffer) == 0) {  // match
+    // leave flags to default false (meaning no need to calculate)
+  } else if (strcmp(header_no_s, in_buffer) == 0) {
+    f->solrad_flag = true;
+  } else if (strcmp(header_no_p, in_buffer) == 0) {
+    f->percent_cured_flag = true;
+  } else if (strcmp(header_no_g, in_buffer) == 0) {
+    f->grass_fuel_load_flag = true;
+  } else if (strcmp(header_no_ps, in_buffer) == 0) {
+    f->percent_cured_flag = true;
+    f->solrad_flag = true;
+  } else if (strcmp(header_no_gs, in_buffer) == 0) {
+    f->grass_fuel_load_flag = true;
+    f->solrad_flag = true;
+  } else if (strcmp(header_no_gp, in_buffer) == 0) {
+    f->grass_fuel_load_flag = true;
+    f->percent_cured_flag = true;
+  } else if (strcmp(header_req, in_buffer) == 0) {
+    f->grass_fuel_load_flag = true;
+    f->percent_cured_flag = true;
+    f->solrad_flag = true;
+  } else {
+    printf("Error: Optional columns need to be ordered\n%s\n", header_full);
+    exit(1);
+  }
+
 }
 
-void check_header(FILE *input, const char *header)
+void check_header_match(FILE *input, const char *header)
 {
-  /* printf("Checking header matches:\n\t%s\n", header); */
-  /* check that the header matches what is expected */
+  /* check that the first line in input matches header */
   char a[1];
   const int n = strlen(header);
   int i;
@@ -177,94 +310,93 @@ void check_weather(double temp, double rh, double wind, double rain)
     exit(1);
   }
 }
-void check_inputs(double temp, double rh, double wind, double rain, double solrad, double percent_cured, double grass_fuel_load)
+
+void check_inputs(double temp, double rh, double wind, double rain,
+  double grass_fuel_load, double percent_cured, double solrad)
 {
   check_weather(temp, rh, wind, rain);
   /* just do basic checks, but use this so we can expand checks if desired */
   if (solrad < 0)
   {
-    printf("Solar radiation must be positive, but got %f\n", rh);
+    printf("Solar radiation must be positive, but got %f\n", solrad);
     exit(1);
   }
   if (percent_cured < 0 || percent_cured > 100)
   {
-    printf("Percent cured must be 0-100, but got %f\n", rh);
+    printf("Percent cured must be 0-100, but got %f\n", percent_cured);
     exit(1);
   }
   if (grass_fuel_load < 0)
   {
-    printf("Grass fuel load must be positive, but got %f\n", wind);
+    printf("Grass fuel load must be positive, but got %f\n", grass_fuel_load);
     exit(1);
   }
 }
 
-int read_row(FILE *inp, struct row *r)
-{
-  /* this is declared as an array just to make it a pointer ...for reading commas easily*/
-  char a[1];
-  int err = fscanf(inp,
-                   "%lf%c%lf%c%d%c%d%c%d%c%d%c%lf%c%lf%c%lf%c%lf",
-                   &r->lat,
-                   a,
-                   &r->lon,
-                   a,
-                   &r->year,
-                   a,
-                   &r->mon,
-                   a,
-                   &r->day,
-                   a,
-                   &r->hour,
-                   a,
-                   &r->temp,
-                   a,
-                   &r->rh,
-                   a,
-                   &r->ws,
-                   a,
-                   &r->rain);
-  if (err > 0)
-  {
-    check_weather(r->temp, r->rh, r->ws, r->rain);
-  }
-  return err;
-}
+int read_row_inputs(FILE *inp, struct row *r, struct flags *f,
+  float def_grass_fuel_load, int def_mon_curing, int def_day_curing) {
+  char line[500];  // limit a row of data to 500 characters
+  int err;
 
-int read_row_inputs(FILE *inp, struct row *r)
-{
-  /* this is declared as an array just to make it a pointer ...for reading commas easily*/
-  char a[1];
-  int err = fscanf(inp,
-                   "%lf%c%lf%c%d%c%d%c%d%c%d%c%lf%c%lf%c%lf%c%lf%c%lf%c%lf%c%lf",
-                   &r->lat,
-                   a,
-                   &r->lon,
-                   a,
-                   &r->year,
-                   a,
-                   &r->mon,
-                   a,
-                   &r->day,
-                   a,
-                   &r->hour,
-                   a,
-                   &r->temp,
-                   a,
-                   &r->rh,
-                   a,
-                   &r->ws,
-                   a,
-                   &r->rain,
-                   a,
-                   &r->solrad,
-                   a,
-                   &r->percent_cured,
-                   a,
-                   &r->grass_fuel_load);
-  if (err > 0)
-  {
-    check_inputs(r->temp, r->rh, r->ws, r->rain, r->solrad, r->percent_cured, r->grass_fuel_load);
+  // read in the next line from the input csv
+  err = fscanf(inp, "%500s", line);  // limit a row of data to 500 characters
+  
+  if (strlen(line) == 500) {  // limit a row of data to 500 characters
+    puts("Input data line has 500 or more characters, remove columns or increase limit");
+    exit(1);
   }
+
+  if (err == 0) {  // fscanf didn't find another line
+    return err;
+  }
+
+  // this section uses (requires) the fact that required inputs are ordered and complete
+  r->lat = atof(strtok(line, ","));
+  r->lon = atof(strtok(NULL, ","));
+  r->year = atoi(strtok(NULL, ","));
+  r->mon = atoi(strtok(NULL, ","));
+  r->day = atoi(strtok(NULL, ","));
+  r->hour = atoi(strtok(NULL, ","));
+  r->temp = atof(strtok(NULL, ","));
+  r->rh = atof(strtok(NULL, ","));
+  r->ws = atof(strtok(NULL, ","));
+  r->rain = atof(strtok(NULL, ","));
+
+  // make timestamp and calculate julian (yday)
+  struct tm ts = {
+    .tm_year = r->year - 1900,  // years since 1900
+    .tm_mon = r->mon - 1,  // 0-indexed month (i.e. Jan = 0)
+    .tm_mday = r->day,
+    .tm_hour = r->hour,
+    .tm_isdst = 0  // modify command line timezone input only for daylight time data
+  };
+  mktime(&ts);
+
+  r->timestamp = ts;
+
+  // optional inputs provided or calculated
+  if (f->grass_fuel_load_flag) {  // true means not provided, needs to be calculated
+    r->grass_fuel_load = def_grass_fuel_load;
+  } else {
+    r->grass_fuel_load = atof(strtok(NULL, ","));
+  }
+  
+  if (f->percent_cured_flag) {
+    r->percent_cured = seasonal_curing(r->year, r->mon, r->day,
+      def_mon_curing, def_day_curing);
+  } else {
+    r->percent_cured = atof(strtok(NULL, ","));
+  }
+
+  if (f->solrad_flag) {
+    r->solrad = single_hour_solrad_estimation(r);
+  } else {
+    r->solrad = atof(strtok(NULL, ","));
+  }
+
+  check_inputs(r->temp, r->rh, r->ws, r->rain,
+    r->grass_fuel_load, r->percent_cured, r->solrad);
+
   return err;
 }
 
@@ -303,82 +435,33 @@ int read_row_minmax(FILE *inp, struct row_minmax *r)
   /* this is declared as an array just to make it a pointer ...for reading commas easily*/
   char a[1];
   int err = fscanf(inp,
-                   "%lf%c%lf%c%d%c%d%c%d%c%lf%c%lf%c%lf%c%lf%c%lf%c%lf%c%lf",
-                   &r->lat,
-                   a,
-                   &r->lon,
-                   a,
-                   &r->year,
-                   a,
-                   &r->mon,
-                   a,
-                   &r->day,
-                   a,
-                   &r->temp_min,
-                   a,
-                   &r->temp_max,
-                   a,
-                   &r->rh_min,
-                   a,
-                   &r->rh_max,
-                   a,
-                   &r->ws_min,
-                   a,
-                   &r->ws_max,
-                   a,
-                   &r->rain);
+    "%lf%c%lf%c"
+    "%d%c%d%c%d%c"
+    "%lf%c%lf%c"
+    "%lf%c%lf%c"
+    "%lf%c%lf%c%lf",
+    &r->lat, a, &r->lon, a,
+    &r->year, a, &r->mon, a, &r->day, a,
+    &r->temp_min, a, &r->temp_max, a,
+    &r->rh_min, a, &r->rh_max, a,
+    &r->ws_min, a, &r->ws_max, a, &r->rain);
   if (err > 0)
   {
     check_weather(r->temp_min, r->rh_min, r->ws_min, r->rain);
     check_weather(r->temp_max, r->rh_max, r->ws_max, r->rain);
   }
+
+  struct tm date = {
+    .tm_year = r->year - 1900,  // years since 1900
+    .tm_mon = r->mon - 1,  // 0-indexed month (i.e. Jan = 0)
+    .tm_mday = r->day,
+    .tm_isdst = 0  // modify command line timezone input only for daylight time data
+  };
+  mktime(&date);
+  r->date = date;
+
   return err;
 }
-
-/* this is a simple piecewise tabular summary (10day) if DKT's NDVI based cure state analysis (smoothed)
-It is from central canada Boreal Plains
-
-It will be a DEFAULT greenness given NO other information ....Users should be encouraged to make ...
-these local observations each year themselves as such obs will be far superior to this average
-*/
-double seasonal_curing(int julian_date)
-{
-  static double PERCENT_CURED[38] = {96.0, 96.0, 96.0, 96.0, 96.0, 96.0, 96.0, 96.0, 95.0, 93.0, 92.0, 90.5, 88.4, 84.4, 78.1, 68.7, 50.3, 32.9, 23.0, 22.0, 21.0, 20.0, 25.7, 35.0, 43.0, 49.8, 60.0, 68.0, 72.0, 75.0, 78.9, 86.0, 96.0, 96.0, 96.0, 96.0, 96.0, 96.0};
-  /* these are data from DanT's 10 day average of curing for Boreal Plains ...they have been smoothed however
-  and the winter has been added at the max curing observed
-  the DATE array values is the first julian date (doy) in the 10 day window....its unnedded the way i did this now
-  A date past the end of year has been added to make the array search easier.
-
-  input julian date should be between 1 and 366
-  */
-  /* truncating the date divide by 10 to get in right range */
-  const int jd_class = julian_date / 10;
-  const double first = PERCENT_CURED[jd_class];
-  const double last = PERCENT_CURED[jd_class + 1];
-  /* should be the fractional position in the 10 day period  */
-  const double period_frac = (julian_date % 10) / 10.0;
-  return (first + (last - first) * period_frac);
-}
-
-// // HACK: use sprintf and then copy so we can replace -0.0 without screwing things up with bad rounding
-// int _fprintf(FILE *__restrict __stream, const char *__restrict __fmt, ...)
-// {
-//   char buffer[4096];
-//   va_list args;
-//   va_start(args, __fmt);
-//   const size_t len = vsnprintf(
-//       buffer,
-//       sizeof(buffer),
-//       __fmt,
-//       args);
-//   if (len >= sizeof(buffer))
-//   {
-//     printf("**** ERROR: could not write because buffer is too small for %s:\n\t", buffer);
-//     exit(-1);
-//   }
-//   va_end(args);
-//   // now replace -0.0 anywhere
-// }
 
 int save_rounded(FILE *file, const char *fmt, const double value)
 {
@@ -410,10 +493,10 @@ int save_rounded(FILE *file, const char *fmt, const double value)
   return len;
 }
 
-// HACK: act like other languages for printing based on columns so results are the same
+// act like other languages for printing based on columns so results are the same
 void save_csv(FILE *file, const char *fmt_all, ...)
 {
-  char buffer[strlen(fmt_all) + 1];
+  char *buffer = (char *)malloc(sizeof(char) * (strlen(fmt_all) + 1));
   strcpy(buffer, fmt_all);
   va_list args;
 #ifndef NDEBUG
@@ -458,7 +541,7 @@ void save_csv(FILE *file, const char *fmt_all, ...)
 #endif
     switch (buffer[k - 1])
     {
-    case 'd':
+    case 'd': ;
       int value_int = va_arg(args, int);
       // no need to guard against "-0.0"
 #ifndef NDEBUG
@@ -470,7 +553,7 @@ void save_csv(FILE *file, const char *fmt_all, ...)
       break;
     case 'f':
     // fall through
-    case 'g':
+    case 'g': ;
       double value_double = va_arg(args, double);
 #ifndef NDEBUG
       printf("formatting %s with %f\n", &(buffer[j]), value_double);
@@ -491,4 +574,5 @@ void save_csv(FILE *file, const char *fmt_all, ...)
     // ++done;
   }
   va_end(args);
+  free(buffer);
 }

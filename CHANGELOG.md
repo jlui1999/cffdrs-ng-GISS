@@ -1,6 +1,127 @@
 # Changelog
 
-All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Changes under "unreleased" are intended for the next update. Programming languages affected are specified when applicable and omitted when changes affect the GitHub repository or all three languages at once (*C*, *Python*, and *R*).
+All notable changes to this project will be documented in this file. The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Changes under "to be released" are intended for the next update. Programming languages affected are specified when applicable and omitted when changes affect the GitHub repository or all three languages at once (*C*, *Python*, and *R*).
+
+## 2025-12-10
+
+### Added
+- Option when running `hFWI()` to have a transition from matted to standing grassland fuel (default, for regions with winter snowfall), or stick with standing instead (*Python* and *R*)
+- Option when running `hFWI()` to not split by year (for regions with seasonal data that includes Dec 31-Jan 1) and run each station's data as one continuous block (*Python* and *R*)
+- Standard datasets for PRF 2007
+    - Standard hourly weather data input for C (**PRF2007_hourly_wx_C-format.csv**)
+    - Standard `hFWI()` outputs (**PRF2007_standard_hourly_FWI.csv**)
+    - Standard `generate_daily_summaries()` outputs (**PRF2007_standard_daily_summaries.csv**)
+- New print message when running hourly FWI that shows startup values
+
+### Changed
+- Leap years are properly accounted for in the transition between matted and standing GFMC, default `percent_cured` values, and in `get_sunlight()`
+- Transition between matted and standing GFMC and start of grassland fuel green up now defined by calendar date instead of Julian (ordinal) date
+
+| Transition                          | Old Value (Julian date) | New Value (Calendar date) |
+| ----------------------------------- | ----------------------- | ------------------------- |
+| End of matted grassland fuel        | 180                     | June 30th                 |
+| Start of standing grassland fuel    | 181                     | July 1st                  |
+| Start of green up (`percent_cured`) | 71 (implicit)           | March 12th                |
+
+- Reorganized **NG_FWI** variable definitions in header (*Python* and *R*)
+- Most startup arguments when running **NG_FWI_main.c** or **daily_summaries.c** by command line are optional (and reorganized) matching R version (*C*)
+- DMC and DC functions take and output moisture content (%) instead of moisture codes (*C*)
+- Updated moisture code to moisture content (and vice versa) conversion functions (*C*)
+
+### Removed
+- Deprecated `is_sequential()` function (*R*)
+- Unused `dmc_before_rain` and `dc_before_rain` arguments for **NG_FWI** (*C*)
+- Requirement that the `timezone` argument be between -2 and -9 (*C*)
+
+### Fixed
+- All outputs in C version (NGFWI, daily summaries, make hourly, make minmax) now match Python and R versions (*C*)
+- `is_sequential_hours()` and `is_sequential_days()` differentiates by their respective time units (*R*)
+- `daily_summaries()` accounts for leap years properly (pseudo date differentiates leap days) (*Python* and *R*)
+- `grass_fuel_load` actually uses the default 0.35 kg/m^2 if not provided (*C*)
+
+## 2025-10-31 🎃
+
+### Changed
+- Updated **NG_FWI** and **daily_summaries** output column order (*C*)
+- Updated **NG_FWI** and **daily_summaries** to round outputs to 4 decimal places (*C*)
+
+### Fixed
+- GFMC, DMC, and DC calculations to match other versions (*C*)
+- Unallocated memory access in **daily_summaries** if a day does not have enough hours (*C*)
+
+### Removed
+- Some print statements for debugging (*C*)
+
+## 2025-10-20
+
+### Added
+- `timezone` argument in `minmax_to_hourly()` function defaults to using a column in input, or can still be specified (*Python* and *R*)
+- `round_out` argument in `minmax_to_hourly()` and `daily_to_minmax()` functions defaults to rounding weather variables to 4 decimal places (*Python* and *R*)
+- `daily_to_minmax()` and `minmax_to_hourly()` check for required input columns (*Python* and *R*)
+
+### Changed
+- `minmax_to_hourly()` can accept one row (one day) inputs (*Python* and *R*)
+- `daily_to_minmax()` and `minmax_to_hourly()` outputs preserve data frame/data table class from input (*R*)
+
+### Removed
+- Requirement that the `timezone` argument in `minmax_to_hourly()` be between -2 and -9 (*Python*)
+
+### Fixed
+- Running **NG_FWI**, **daily_summaries**, **make_hourly**, and **make_minmax** by command line properly converts `timezone`, `round_out`, and `reset_hr` arguments to corresponding number types (*Python* and *R*)
+- `minmax_to_hourly()` and `get_sunlight()` calculations allow for different data frame column name cases (*Python* and *R*)
+- `make_minmax` by command line doesn't use removed `save_csv()` function (*Python* and *R*)
+- `is_sequential_days()` and `is_sequential_hours()` works on a data frame copy and allows for different data frame column name cases (*Python* and *R*)
+- `hFWI()` output preserves data table class if input was a data table (*R*)
+
+## 2025-10-10
+
+### Fixed
+- Print statement in `generate_daily_summaries()` can handle numeric IDs (*Python*)
+- Generating `date` column in `hFWI()` converts input values to integer first (*Python*)
+
+## 2025-10-08
+
+### Added
+- Restored `timezone` argument in `hFWI()` to create/override `timezone` column in input data frame. Default is to use a provided `timezone` column (*Python* and *R*)
+
+### Changed
+- Updated daytime check in DMC and DC calculation for northern regions with midnight sun (*Python* and *R*)
+- Calculated `solrad` values less than 1e-4 are always automatically set to 0 (*Python* and *R*)
+
+## 2025-10-02
+
+### Added
+- Preliminary calculation variables for **NG_FWI.c** are included in output and inputs for "live hourly runs" (continuation runs) (*C*)
+- **daily_summaries.c** file to generate daily summary reports similar to Python and R (*C*)
+- **NG_FWI_main.c** file to hold the `main()` function for **NG_FWI.c** (*C*)
+- **NG_FWI_main_historical.c** file to keep the old usage and arguments for **NG_FWI.c** (*C*)
+
+### Changed
+- `solrad` and `percent_cured` columns are calculated if not provided (*C*)
+- Updated daytime check in DMC and DC calculation for northern regions with midnight sun (*C*)
+- Solar radiation calculation in **util.c** to only need each hour's weather data instead of a whole day (*C*)
+- Parameters used to create typical diurnal curve for `make_hourly()` (see similar 2025-09-26 changes for parameter values) (*C*)
+- Various changes to header checking for compatibility between files (*C*)
+
+## 2025-09-26
+
+### Changed
+- Parameters used to create typical diurnal curve for `make_hourly()` (*Python* and *R*)
+
+| Parameter     | Old Value | New Value |
+| ------------- | --------- | --------- |
+| Temp $\alpha$ | 0.2       | 0.0       |
+| Temp $\beta$  | 2.0       | 2.75      |
+| Temp $\gamma$ | -2.9      | -1.9      |
+| RH $\alpha$   | 0.4       | 0.25      |
+| RH $\beta$    | 1.9       | 2.75      |
+| RH $\gamma$   | -2.9      | -2.0      |
+| WS $\alpha$   | 1.2       | 1.0       |
+| WS $\beta$    | 1.7       | 1.5       |
+| WS $\gamma$   | -1.5      | -1.3      |
+
+### Fixed
+- Data inputs to `hFWI()` that have multiple years for the same ID (station) are properly split by year (*R*)
 
 ## 2025-09-10
 
@@ -64,5 +185,4 @@ All notable changes to this project will be documented in this file. The format 
 - **make_inputs** as it is exceeded by `hFWI()` which performs the same jobs and will continue to be updated (*Python* and *R*)
 ### Removed
 - Debugging print statements in `standing_grass_spread_ROS()` function (*R*)
-
 - Incorrect and unused `dmc_to_moisture_percent()` function in **util.r** (*R*)
