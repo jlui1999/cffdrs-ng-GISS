@@ -23,9 +23,9 @@ for k,v in vars(args).items():
     if (k == 'longitude'):
         lon = float(v[0])
         if (lon > 360 or lon < -360):
-            lon = lon % 360
+            lon %= 360
         if (lon > 180):
-            lon = 360 - lon
+            lon -= 360
 
 tf = TimezoneFinder()
 tz_loc = tf.timezone_at(lat=lat, lng=lon)

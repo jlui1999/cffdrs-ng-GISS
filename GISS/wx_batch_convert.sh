@@ -23,8 +23,10 @@ fi
 commonsuffix=".linear.HourlyFWIFromHourlyInterpContinuous.csv"
 
 # Filter bounding box for Canada (but also include stuff on different latitudes)
-lonmin=-150
-lonmax=-40
+#lonmin=-150
+#lonmax=-40
+lonmin=-999
+lonmax=999
 
 bash_source=$(cd "$(dirname "${BASH_SOURCE[0]}")" ; pwd -P)
 mkdir -p $outdir
@@ -38,8 +40,8 @@ while IFS=$',' read -r -a args; do
   if [ ${wmoid:0:1} = '#' ]; then
     continue
   fi
-  echo "${indir}/${wmoid}${commonsuffix}"
   if [ -f "${indir}/${wmoid}${commonsuffix}" ] && (( $(echo "$lon > $lonmin" | bc) )) && (( $(echo "$lon < $lonmax" | bc) )) ; then
+    echo "${indir}/${wmoid}${commonsuffix}"
     # use wx_convert_filter.sh to do conversion
     echo ${wmoid}: $wmoname, $lat, $lon
     $bash_source/wx_convert_filter.sh "${indir}/${wmoid}${commonsuffix}" $yearstart $yearend $wmoid $lat $lon "${outdir}/wx_${wmoid}${suffix}.csv"
