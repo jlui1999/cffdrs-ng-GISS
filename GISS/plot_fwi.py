@@ -13,7 +13,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--input', nargs=1, required=True, help='Name of csv file of FWI output')
 parser.add_argument('-o', '--output', nargs=1, required=True, help='Name of output file of FWI output (PDF or PNG)')
 parser.add_argument('--name', nargs=1, help='Name of the station')
-parser.add_argument('-m', '--mode', nargs=1, help='Plot type: default (hourly and maximum daily FWI), hourly (hourly FWI), maxdaily (maximum daily FWI), rolling (daily rolling period, specify period in days)')
+parser.add_argument('-m', '--mode', nargs=1, help='Plot type: default (hourly and maximum daily FWI), hourly (hourly FWI), maxdaily (maximum daily FWI), rolling (daily rolling period, specify period in days), monthly (monthly FWI with percentiles, seasonal (seasonal FWI with percentiles)')
 parser.add_argument('-p', '--period', nargs=1, help='Period for rolling statistics, number of days in rolling average')
 parser.add_argument('--from', nargs=3, help='Date from where plot starts, separated by spaces YYYY MM DD')
 parser.add_argument('--to', nargs=3, help='Date to where plot ends, separated by spaces YYYY MM DD')
@@ -39,6 +39,9 @@ HOURLY_FWI = 'hourly'
 MAX_DAILY_FWI = 'maxdaily'
 ROLLING_STATS = 'rolling'
 DEFAULT = 'default'
+SEASONAL = 'seasonal'
+SEASONAL_SOLAR = 'seasonal_solar'
+MONTHLY = 'monthly'
 
 for k,v in vars(args).items():
     #print (k,v)
@@ -60,7 +63,7 @@ for k,v in vars(args).items():
     if (k == 'mode'):
         if (v is not None):
             plot_mode = v[0]
-            if (plot_mode != HOURLY_FWI and plot_mode != MAX_DAILY_FWI and plot_mode != ROLLING_STATS and plot_mode != DEFAULT):
+            if (plot_mode != HOURLY_FWI and plot_mode != MAX_DAILY_FWI and plot_mode != ROLLING_STATS and plot_mode != DEFAULT and plot_mode != SEASONAL and plot_mode != SEASONAL_SOLAR and plot_mode != MONTHLY):
                 print("Invalid plotting mode {}".format(plot_mode))
                 exit(3)
     if (k == 'period'):
@@ -99,41 +102,19 @@ class fwi_data:
         self.startyear = self.df['year'].iloc[0]
         self.endyear = self.df['year'].iloc[-1]
 
-    def plothourly(self, outputfile, startdate, enddate):
-        if (startdate is None and enddate is None):
-            if (plot_all):
-                startdate = self.df.iloc[0]["full_date"]
-                enddate = self.df.iloc[-1]["full_date"]
-            elif (season is not None):
-                startdate, enddate = self.findLastSeason(season)
-            else:
-                startdate, enddate = self.findFireSeason()
-        elif (startdate is None):
-            startdate = self.df.iloc[0]["full_date"]
-        elif (enddate is None):
-            enddate = self.df.iloc[-1]["full_date"]
-        do_plot_setup(self.id, self.name, extra=' (Hourly')
+    def plotHourly(self, outputfile, startdate, enddate):
+        startdate, enddate = self.checkDates(startdate, enddate)
+        do_plot_setup(self.id, self.name, extra=' (Hourly)')
         filtered_rows = self.df[(self.df['full_date'] >= startdate) & (self.df['full_date'] <= enddate)]
         plt.plot(filtered_rows['full_date'], filtered_rows['fwi'], color='blue', linewidth=0.5)
         plt.gca().set_ylim(bottom=0)
         plt.savefig(outputfile)
 
-    def plotmaxdaily(self, outputfile, startdate, enddate, plothourly=False):
-        if (startdate is None and enddate is None):
-            if (plot_all):
-                startdate = self.df.iloc[0]["full_date"]
-                enddate = self.df.iloc[-1]["full_date"]
-            elif (season is not None):
-                startdate, enddate = self.findLastSeason(season)
-            else:
-                startdate, enddate = self.findFireSeason()
-        elif (startdate is None):
-            startdate = self.df.iloc[0]["full_date"]
-        elif (enddate is None):
-            enddate = self.df.iloc[-1]["full_date"]
+    def plotMaxDaily(self, outputfile, startdate, enddate, plotHourly=False):
+        startdate, enddate = self.checkDates(startdate, enddate)
         do_plot_setup(self.id, self.name, extra=' (Max Daily)')
-        maxdates, maxfwis = self.getmaxdailyfwi(startdate, enddate)
-        if (plothourly):
+        maxdates, maxfwis = self.getMaxDailyFWI(startdate, enddate)
+        if (plotHourly):
             # need a dummy last day to get the step plot to look better
             maxdates.append(maxdates[-1] + timedelta(days=1))
             maxfwis.append(maxfwis[-1])
@@ -146,13 +127,51 @@ class fwi_data:
         plt.gca().set_ylim(bottom=0)
         plt.savefig(outputfile)
 
-    def plotrolling(self, outputfile, startdate, enddate, period, hourly=False, dump_csv=False):
+    def plotMonthly(self, outputfile, startdate, enddate, dump_csv=False):
+        startdate, enddate = self.checkDates(startdate, enddate)
+        do_plot_setup(self.id, self.name, extra=' (Monthly)')
+        dates, p5, p25, p50, p75, p95 = self.getMonthlyFWI(startdate, enddate)
+
+        plt.fill_between(dates, p5, p95, step='post', color='0.95', label='95%')
+        plt.fill_between(dates, p25, p75, step='post', color='0.85', label='IQR')
+        plt.step(dates, p50, where='post', color='red', linewidth=2, label='Monthly Mean FWI')
+        plt.gca().set_ylim(bottom=0)
+        plt.legend(fontsize=20, framealpha=0.5)
+        plt.savefig(outputfile)
+
+        if (dump_csv):
+            csvdata = list(zip(dates[:-1], p5[:-1], p25[:-1], p50[:-1], p75[:-1], p95[:-1]))
+            with open(outputfile + '.csv', 'w') as outcsv:
+                outcsv.write("date,5th percentile,25th,50th,75th,95th\n")
+                for line in csvdata:
+                    outcsv.write("{},{},{},{},{},{}\n".format(line[0].strftime("%Y%m%d%H"), *line[1:]))
+
+    def plotSeasonal(self, outputfile, startdate, enddate, solar=False, dump_csv=False):
+        startdate, enddate = self.checkDates(startdate, enddate)
+        do_plot_setup(self.id, self.name, extra=' (Seasonal)')
+        dates, p5, p25, p50, p75, p95 = self.getSeasonalFWI(startdate, enddate, solar=solar)
+
+        plt.fill_between(dates, p5, p95, step='post', color='0.95', label='95%')
+        plt.fill_between(dates, p25, p75, step='post', color='0.85', label='IQR')
+        plt.step(dates, p50, where='post', color='red', linewidth=2, label='Seasonal Mean FWI')
+        plt.gca().set_ylim(bottom=0)
+        plt.legend(fontsize=20, framealpha=0.5)
+        plt.savefig(outputfile)
+
+        if (dump_csv):
+            csvdata = list(zip(dates[:-1], p5[:-1], p25[:-1], p50[:-1], p75[:-1], p95[:-1]))
+            with open(outputfile + '.csv', 'w') as outcsv:
+                outcsv.write("date,5th percentile,25th,50th,75th,95th\n")
+                for line in csvdata:
+                    outcsv.write("{},{},{},{},{},{}\n".format(line[0].strftime("%Y%m%d%H"), *line[1:]))
+
+    def plotRolling(self, outputfile, startdate, enddate, period, hourly=False, dump_csv=False):
         if (season is not None):
             startdate, enddate = self.findLastSeason(season)
         elif (period is None or startdate is None or enddate is None):
             startdate, enddate = self.findFireSeason()
         do_plot_setup(self.id, self.name, extra=" (Rolling Period {} Days)".format(period), subtitle="Climate reference period {} to {}".format(self.startyear, self.endyear))
-        dates, p5, p25, p50, p75, p95, avgfwis = self.getrollingfwi(startdate, enddate, period, hourly=hourly)
+        dates, p5, p25, p50, p75, p95, avgfwis = self.getRollingFWI(startdate, enddate, period, hourly=hourly)
         plt.fill_between(dates, p5, p95, color='0.95', label='95%')
         plt.fill_between(dates, p25, p75, color='0.85', label='IQR')
         plt.plot(dates, p50, color='black', label='mean')
@@ -168,7 +187,141 @@ class fwi_data:
                 for line in csvdata:
                     outcsv.write("{},{},{},{},{},{},{}\n".format(line[0].strftime("%Y%m%d%H"), *line[1:]))
 
-    def getmaxdailyfwi(self, startdate, enddate):
+    # returns values with all months in the range
+    # NOTE: will extend outside of range of dates to include full month, starting date of April 15 will include full month of April
+    def getMonthlyFWI(self, startdate, enddate):
+        year = startdate.year
+        month = startdate.month
+
+        datefwi = datetime(year, month, 1)
+
+        percentile95 = []
+        percentile75 = []
+        percentile50 = []
+        percentile25 = []
+        percentile5 = []
+
+        dates = []
+
+        while (datefwi <= enddate):
+            filtered_rows = self.df[(self.df['year'] == datefwi.year) & (self.df['month'] == datefwi.month)]
+            dates.append(datefwi)
+
+            if (len(filtered_rows) == 0):
+                percentile95.append(np.nan)
+                percentile75.append(np.nan)
+                percentile50.append(np.nan)
+                percentile25.append(np.nan)
+                percentile5.append(np.nan)
+            else:
+                percentile95.append(np.percentile(filtered_rows['fwi'], 95))
+                percentile75.append(np.percentile(filtered_rows['fwi'], 75))
+                percentile50.append(np.percentile(filtered_rows['fwi'], 50))
+                percentile25.append(np.percentile(filtered_rows['fwi'], 25))
+                percentile5.append(np.percentile(filtered_rows['fwi'], 5))
+
+            month += 1
+            if (month > 12):
+                month = 1
+                year += 1
+
+            datefwi = datetime(year, month, 1)
+
+        # copy final row for better plotting
+        dates.append(datefwi)
+        percentile95.append(percentile95[-1])
+        percentile75.append(percentile75[-1])
+        percentile50.append(percentile50[-1])
+        percentile25.append(percentile25[-1])
+        percentile5.append(percentile5[-1])
+
+        return dates, percentile5, percentile25, percentile50, percentile75, percentile95
+
+    # returns values with all seasons in range
+    # NOTE: will extend outside of range of dates to include full season, starting date of April 15 will include entirety of Spring
+    def getSeasonalFWI(self, startdate, enddate, solar=False):
+        year = startdate.year
+        month = startdate.month
+        day = startdate.day
+
+        seasons_GISS = [[3, 1], [6, 1], [9, 1], [12, 1]]
+        seasons_solar = [[3, 20], [6, 21], [9, 22], [12, 20]]
+
+        if (solar):
+            seasons = seasons_solar
+        else:
+            seasons = seasons_GISS
+
+        # get the season that starting date is in 
+        season_idx_start = 0
+        season_idx_end = 0
+        for i in range(5):
+            if (i == 4):
+                datefwi_end = datetime(year+1, *seasons[0], hour=23)
+                season_idx_end = 0
+            else:
+                datefwi_end = datetime(year, *seasons[i], hour=23)
+                season_idx_end = i
+            if (startdate < datefwi_end):
+                if (i == 0):
+                    year -= 1
+                    datefwi_start = datetime(year, *seasons[-1])
+                    season_idx_start = 3
+                else:
+                    datefwi_start = datetime(year, *seasons[i-1])
+                    season_idx_start = i-1
+                break
+
+        percentile95 = []
+        percentile75 = []
+        percentile50 = []
+        percentile25 = []
+        percentile5 = []
+
+        dates = []
+
+        while (datefwi_start <= enddate):
+            filtered_rows = self.df[(self.df["full_date"] >= datefwi_start) & (self.df["full_date"] < datefwi_end)]
+            dates.append(datefwi_start)
+
+            if (len(filtered_rows) == 0):
+                percentile95.append(np.nan)
+                percentile75.append(np.nan)
+                percentile50.append(np.nan)
+                percentile25.append(np.nan)
+                percentile5.append(np.nan)
+            else:
+                percentile95.append(np.percentile(filtered_rows['fwi'], 95))
+                percentile75.append(np.percentile(filtered_rows['fwi'], 75))
+                percentile50.append(np.percentile(filtered_rows['fwi'], 50))
+                percentile25.append(np.percentile(filtered_rows['fwi'], 25))
+                percentile5.append(np.percentile(filtered_rows['fwi'], 5))
+            
+            season_idx_start += 1
+            season_idx_end += 1
+
+            if (season_idx_start == 4):
+                year += 1
+                season_idx_start = 0
+            datefwi_start = datetime(year, *seasons[season_idx_start])
+
+            if (season_idx_end == 4):
+                season_idx_end = 0
+                datefwi_end = datetime(year+1, *seasons[season_idx_end], hour=23)
+            else:
+                datefwi_end = datetime(year, *seasons[season_idx_end], hour=23)
+
+            # copy final row for better plotting
+        dates.append(datefwi_start)
+        percentile95.append(percentile95[-1])
+        percentile75.append(percentile75[-1])
+        percentile50.append(percentile50[-1])
+        percentile25.append(percentile25[-1])
+        percentile5.append(percentile5[-1])
+
+        return dates, percentile5, percentile25, percentile50, percentile75, percentile95
+
+    def getMaxDailyFWI(self, startdate, enddate):
         maxfwis = []
         dates = []
         if (startdate is None):
@@ -264,7 +417,7 @@ class fwi_data:
         return startdate, enddate
 
     # returns rolling FWI of all previous FWI periods in percentiles 5, 25, 50, 75, 95, along with the average FWI for the latest period
-    def getrollingfwi(self, startdate, enddate, period, hourly=False):
+    def getRollingFWI(self, startdate, enddate, period, hourly=False):
         if (period is None):
             print("Invalid specification.")
             exit(4)
@@ -311,13 +464,18 @@ class fwi_data:
 
             if (len(filtered_rows_fwi) == 0):
                 averagefwi.append(np.nan)
+                percentile95.append(np.nan)
+                percentile75.append(np.nan)
+                percentile50.append(np.nan)
+                percentile25.append(np.nan)
+                percentile5.append(np.nan)
             else:
                 averagefwi.append(np.average(filtered_rows_fwi['fwi']))
-            percentile95.append(np.percentile(filtered_rows['fwi'], 95))
-            percentile75.append(np.percentile(filtered_rows['fwi'], 75))
-            percentile50.append(np.percentile(filtered_rows['fwi'], 50))
-            percentile25.append(np.percentile(filtered_rows['fwi'], 25))
-            percentile5.append(np.percentile(filtered_rows['fwi'], 5))
+                percentile95.append(np.percentile(filtered_rows['fwi'], 95))
+                percentile75.append(np.percentile(filtered_rows['fwi'], 75))
+                percentile50.append(np.percentile(filtered_rows['fwi'], 50))
+                percentile25.append(np.percentile(filtered_rows['fwi'], 25))
+                percentile5.append(np.percentile(filtered_rows['fwi'], 5))
 
             datefwi += timedelta(days=1)
             rollingdateend += timedelta(days=1)
@@ -325,6 +483,16 @@ class fwi_data:
 
         return dates, percentile5, percentile25, percentile50, percentile75, percentile95, averagefwi
 
+    def checkDates(self, startdate, enddate):
+        if (startdate is None and enddate is None):
+            if (plot_all):
+                startdate = self.df.iloc[0]["full_date"]
+                enddate = self.df.iloc[-1]["full_date"]
+            elif (season is not None):
+                startdate, enddate = self.findLastSeason(season)
+            else:
+                startdate, enddate = self.findFireSeason()
+        return startdate, enddate
 
 def do_plot_setup(station_id, station_name, extra='', subtitle=''):
     fig = plt.figure(figsize=(20, 10))
@@ -340,13 +508,19 @@ def do_plot_setup(station_id, station_name, extra='', subtitle=''):
 fwidataobj = fwi_data(inputfile, station_name)
 
 if (plot_mode == DEFAULT):
-    fwidataobj.plotmaxdaily(outputfile, startdate, enddate, plothourly=True)
+    fwidataobj.plotMaxDaily(outputfile, startdate, enddate, plotHourly=True)
 elif (plot_mode == HOURLY_FWI):
-    fwidataobj.plothourly(outputfile, startdate, enddate)
+    fwidataobj.plotHourly(outputfile, startdate, enddate)
 elif (plot_mode == MAX_DAILY_FWI):
-    fwidataobj.plotmaxdaily(outputfile, startdate, enddate)
+    fwidataobj.plotMaxDaily(outputfile, startdate, enddate)
 elif (plot_mode == ROLLING_STATS):
-    fwidataobj.plotrolling(outputfile, startdate, enddate, period, dump_csv=dump_csv)
+    fwidataobj.plotRolling(outputfile, startdate, enddate, period, dump_csv=dump_csv)
+elif (plot_mode == MONTHLY):
+    fwidataobj.plotMonthly(outputfile, startdate, enddate, dump_csv=dump_csv)
+elif (plot_mode == SEASONAL):
+    fwidataobj.plotSeasonal(outputfile, startdate, enddate, dump_csv=dump_csv)
+elif (plot_mode == SEASONAL_SOLAR):
+    fwidataobj.plotSeasonal(outputfile, startdate, enddate, solar=True, dump_csv=dump_csv)
 else:
     print("Invalid mode {}".format(plot_mode))
     exit(7)

@@ -131,31 +131,37 @@ plot_fwi.py: plots the data given from an output FWI run. Plots can be in the fo
     -i --input: Name of csv file of FWI output
     -o --output: Name of output file of FWI output (PDF or PNG)
     --name: Name of the station
-    -m --mode: Changes the plot type (default, hourly, maxdaily, rolling)
+    -m --mode: Changes the plot type (default, hourly, maxdaily, rolling, monthly, seasonal, seasonal_solar)
     -p --period: Applicable for rolling plots only, specifies the number of days to take a rolling average of FWI
+    --season: Automatically finds and plots the dates of the last specified season in data range (DFJ, MAM, JJA, SON, winter, spring, summer, autumn/fall)
     --from: Date from where the plot starts, separated by spaces YYYY MM DD
     --to: Date to where plot ends, separated by spaces YYYY MM DD
     --all: Plot the entire date range of the file, ignored if either --from or --to are specified, not applicable for rolling plots
+    --dump-to-csv: Dumps calculated data for monthly, seasonal, or rolling plots to a .csv file
 
-  If no dates are specified, then by default the plot will attempt to find the four-month fire season (average of four months in the dataset with the highest FWI) and plot those months in the last year in the dataset. If the last year in the dataset does not include at least one datapoint in the last month of the fire season (e.g. fire season is May-August, but the dataset ends in July), then the previous year will be plotted instead. If only --from is specified, then the plot will start from that date and go until the end of the file. If only --to is specified, then the plot will go from the beginning of the file to that date. For rolling plots, both dates must be specified or the plot will revert to finding the fire season. Rolling plots are allowed to 'go out of bounds' if the dates specified are outside the boundary of the data file.
+  If no dates or season are specified, then by default the plot will attempt to find the four-month fire season (average of four months in the dataset with the highest FWI) and plot those months in the last year in the dataset. If the last year in the dataset does not include at least one datapoint in the last month of the fire season (e.g. fire season is May-August, but the dataset ends in July), then the previous year will be plotted instead. If only --from is specified, then the plot will start from that date and go until the end of the file. If only --to is specified, then the plot will go from the beginning of the file to that date. For rolling plots, both dates must be specified or the plot will revert to finding the fire season. Rolling plots are allowed to 'go out of bounds' if the dates specified are outside the boundary of the data file. For monthly and seasonal plots, the boundary of the plots will be set so that the entire month/season is included. For example, a starting date of January 15 will include all of January in a monthly plot, and all of winter before January 15 in a seasonal plot. Monthly and seasonal plots plot the 5th, 25th, 50th, 75th, and 95th percentiles.
 
   Example commands:
-    python ../plot_fwi.py -i input.csv -o output.png --name "NAME"
+    python plot_fwi.py -i input.csv -o output.png --name "NAME"
       Default setting: plots the fire season of the latest year, plots both hourly FWI and maximum daily FWI (as a step plot)
-    python ../plot_fwi.py -i input.csv -o output.png --name "NAME" --mode maxdaily
+    python plot_fwi.py -i input.csv -o output.png --name "NAME" --mode maxdaily
       Maximum daily FWI setting: calculates and plots the maximum daily FWI for the fire season of the latest year
-    python ../plot_fwi.py -i input.csv -o output.png --name "NAME" --mode hourly
+    python plot_fwi.py -i input.csv -o output.png --name "NAME" --mode hourly
       Hourly FWI setting: plots the hourly FWI for the fire season of the latest year
-    python ../plot_fwi.py -i input.csv -o output.png --name "NAME" --all
+    python plot_fwi.py -i input.csv -o output.png --name "NAME" --all
       Plot everything: plots the entire date range, plots both hourly FWI and maximum daily FWI (as a step plot)
-    python ../plot_fwi.py -i input.csv -o output.png --name "NAME" --from 2020 3 19 --to 2020 5 31
+    python plot_fwi.py -i input.csv -o output.png --name "NAME" --from 2020 3 19 --to 2020 5 31
       Plot selected: plots the selected date range, plots both hourly FWI and maximum daily FWI (as a step plot)
-    python ../plot_fwi.py -i input.csv -o output.png --name "NAME" --from 2024 1 1
+    python plot_fwi.py -i input.csv -o output.png --name "NAME" --from 2024 1 1
       Plot from: plots from January 1, 2024 to the end of the file, plots both hourly FWI and maximum daily FWI (as a step plot)
-    python ../plot_fwi.py -i input.csv -o output.png --name "NAME" --to 1990 12 31
+    python plot_fwi.py -i input.csv -o output.png --name "NAME" --to 1990 12 31
       Plot to: plots from beginning of the file to December 31, 1990, plots both hourly FWI and maximum daily FWI (as a step plot)
-    python ../plot_fwi.py -i input.csv -o output.png --name "NAME" --mode rolling --period 21
+    python plot_fwi.py -i input.csv -o output.png --name "NAME" --mode rolling --period 21
       Rolling setting: plots the fire season of the latest year, plots the 21-day rolling average of FWI in the entire file with mean, interquartile range, 95%, and the average FWI
-    python ../plot_fwi.py -i input.csv -o output.png --name "NAME" --mode rolling --period 21 --from 2020 3 19 --to 2020 5 31
+    python plot_fwi.py -i input.csv -o output.png --name "NAME" --mode rolling --period 21 --from 2020 3 19 --to 2020 5 31
       Rolling selected: plots the selected date range, plots the 21-day rolling average of FWI in the entire file with mean, interquartile range, 95%, and the average FWI
+    python plot_fwi.py -i input.csv -o output.png --name "NAME" --mode monthly --from 2020 1 1 --to 2020 12 31 
+      Monthly: plots the monthly 5th, 25th, 50th, 75th, and 95th percentiles of FWI for the year 2020
+    python plot_fwi.py -i input.csv -o output.png --name "NAME" --mode seasonal --from 2020 1 1 --to 2020 12 31
+      Seasonal: plots the seasonal 5th, 25th, 50th, 75th, and 95th percentiles of FWI for the period December 1, 2019 to February 28, 2021.
     
