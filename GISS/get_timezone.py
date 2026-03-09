@@ -18,7 +18,7 @@ for k,v in vars(args).items():
     if (k == 'latitude'):
         lat = float(v[0])
         if (lat > 90 or lat < -90):
-            print('latitude {} is invalid')
+            print("latitude {} is invalid".format(lat))
             exit()
     if (k == 'longitude'):
         lon = float(v[0])

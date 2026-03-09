@@ -13,11 +13,12 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--input', nargs=1, required=True, help='Name of csv file of FWI output')
 parser.add_argument('-o', '--output', nargs=1, required=True, help='Name of output file of FWI output (PDF or PNG)')
 parser.add_argument('--name', nargs=1, help='Name of the station')
-parser.add_argument('-m', '--mode', nargs=1, help='Plot type: default (hourly and maximum daily FWI), hourly (hourly FWI), maxdaily (maximum daily FWI), rolling (daily rolling period, specify period in days), monthly (monthly FWI with percentiles, seasonal (seasonal FWI with percentiles)')
+parser.add_argument('-m', '--mode', nargs=1, help='Plot type: default (hourly and maximum daily FWI), hourly (hourly FWI), maxdaily (maximum daily FWI), rolling (daily rolling period, specify period in days), monthly (monthly FWI with percentiles, seasonal (seasonal FWI with percentiles), seasonal_custom (user-defined seasons)')
 parser.add_argument('-p', '--period', nargs=1, help='Period for rolling statistics, number of days in rolling average')
 parser.add_argument('--from', nargs=3, help='Date from where plot starts, separated by spaces YYYY MM DD')
 parser.add_argument('--to', nargs=3, help='Date to where plot ends, separated by spaces YYYY MM DD')
 parser.add_argument('--season', nargs=1, help='Automatically sets date boundary of the plot to be the last specified season in data range; using DJF, MAM, JJA, SON will give seasons Dec 1-Feb 28/29, Mar 1-May 31, etc.; using winter, spring, summer, fall/autumn will give seasons using Mar 20, Jun 21, Sep 22, and Dec 21 as the boundaries.')
+parser.add_argument('--seasons-custom', nargs='*', help='List of months for custom definition of seasons')
 parser.add_argument('--all', action='store_true', help='Plot the entire date range (option ignored if either --from or --to are also given, not applicable to rolling plot)')
 parser.add_argument('--dump-to-csv', action='store_true', help='Dumps percentile data from rolling plot to csv file, does not apply to other plot types')
 
@@ -30,6 +31,7 @@ startdate = None
 enddate = None
 period = None
 season = None
+seasons_custom = None
 plot_all = False
 dump_csv = False
 station_name = ''
@@ -41,6 +43,7 @@ ROLLING_STATS = 'rolling'
 DEFAULT = 'default'
 SEASONAL = 'seasonal'
 SEASONAL_SOLAR = 'seasonal_solar'
+SEASONAL_CUSTOM = 'seasonal_custom'
 MONTHLY = 'monthly'
 
 for k,v in vars(args).items():
@@ -63,7 +66,7 @@ for k,v in vars(args).items():
     if (k == 'mode'):
         if (v is not None):
             plot_mode = v[0]
-            if (plot_mode != HOURLY_FWI and plot_mode != MAX_DAILY_FWI and plot_mode != ROLLING_STATS and plot_mode != DEFAULT and plot_mode != SEASONAL and plot_mode != SEASONAL_SOLAR and plot_mode != MONTHLY):
+            if (plot_mode != HOURLY_FWI and plot_mode != MAX_DAILY_FWI and plot_mode != ROLLING_STATS and plot_mode != DEFAULT and plot_mode != SEASONAL and plot_mode != SEASONAL_SOLAR and plot_mode != SEASONAL_CUSTOM and plot_mode != MONTHLY):
                 print("Invalid plotting mode {}".format(plot_mode))
                 exit(3)
     if (k == 'period'):
@@ -84,13 +87,22 @@ for k,v in vars(args).items():
             season = v[0].upper()
             if (season != 'DJF' and season != 'MAM' and season != 'JJA' and season != 'SON' and season != 'WINTER' and season != 'SPRING' and season != 'SUMMER' and season != 'AUTUMN' and season != 'FALL'):
                 print("Invalid season {}".format(v[0]))
-                exit(3)
+                exit(10)
+    if (k == 'seasons_custom'):
+        if (v is not None):
+            seasons_custom = [ int(i) for i in v ]
+            if (len(seasons_custom) > 12):
+                print("Too many months defined for custom season")
+                exit(11)
+            if (seasons_custom != sorted(seasons_custom)):
+                print("Months for custom seasons must be placed sequentially")
+                exit(12)
     if (k == 'dump_to_csv'):
         dump_csv = v
 
 if (plot_mode == ROLLING_STATS and period is None):
     print("Must specify period and starting and end dates for rolling statistics. --from <YYYY> <MM> <DD> --to <YYYY> <MM> <DD> --period <days>")
-    exit(4)
+    exit(20)
 
 class fwi_data:
     def __init__(self, csvfile, station_name):
@@ -146,10 +158,10 @@ class fwi_data:
                 for line in csvdata:
                     outcsv.write("{},{},{},{},{},{}\n".format(line[0].strftime("%Y%m%d%H"), *line[1:]))
 
-    def plotSeasonal(self, outputfile, startdate, enddate, solar=False, dump_csv=False):
+    def plotSeasonal(self, outputfile, startdate, enddate, solar=False, custom=None, dump_csv=False):
         startdate, enddate = self.checkDates(startdate, enddate)
         do_plot_setup(self.id, self.name, extra=' (Seasonal)')
-        dates, p5, p25, p50, p75, p95 = self.getSeasonalFWI(startdate, enddate, solar=solar)
+        dates, p5, p25, p50, p75, p95 = self.getSeasonalFWI(startdate, enddate, solar=solar, custom=custom)
 
         plt.fill_between(dates, p5, p95, step='post', color='0.95', label='95%')
         plt.fill_between(dates, p25, p75, step='post', color='0.85', label='IQR')
@@ -239,7 +251,7 @@ class fwi_data:
 
     # returns values with all seasons in range
     # NOTE: will extend outside of range of dates to include full season, starting date of April 15 will include entirety of Spring
-    def getSeasonalFWI(self, startdate, enddate, solar=False):
+    def getSeasonalFWI(self, startdate, enddate, solar=False, custom=None):
         year = startdate.year
         month = startdate.month
         day = startdate.day
@@ -249,14 +261,16 @@ class fwi_data:
 
         if (solar):
             seasons = seasons_solar
+        elif (custom is not None):
+            seasons = [ [mon, 1] for mon in custom ]
         else:
             seasons = seasons_GISS
 
         # get the season that starting date is in 
         season_idx_start = 0
         season_idx_end = 0
-        for i in range(5):
-            if (i == 4):
+        for i in range(len(seasons)+1):
+            if (i == len(seasons)):
                 datefwi_end = datetime(year+1, *seasons[0], hour=23)
                 season_idx_end = 0
             else:
@@ -266,7 +280,7 @@ class fwi_data:
                 if (i == 0):
                     year -= 1
                     datefwi_start = datetime(year, *seasons[-1])
-                    season_idx_start = 3
+                    season_idx_start = len(seasons)-1
                 else:
                     datefwi_start = datetime(year, *seasons[i-1])
                     season_idx_start = i-1
@@ -300,12 +314,12 @@ class fwi_data:
             season_idx_start += 1
             season_idx_end += 1
 
-            if (season_idx_start == 4):
+            if (season_idx_start == len(seasons)):
                 year += 1
                 season_idx_start = 0
             datefwi_start = datetime(year, *seasons[season_idx_start])
 
-            if (season_idx_end == 4):
+            if (season_idx_end == len(seasons)):
                 season_idx_end = 0
                 datefwi_end = datetime(year+1, *seasons[season_idx_end], hour=23)
             else:
@@ -369,7 +383,7 @@ class fwi_data:
             startdate = datetime(endyear, *seasonDict[season][0])
         if (self.df.iloc[0]['full_date'] > startdate):
             print("Not enough data for a full specified season")
-            exit(5)
+            exit(13)
 
         return startdate, enddate
 
@@ -521,6 +535,8 @@ elif (plot_mode == SEASONAL):
     fwidataobj.plotSeasonal(outputfile, startdate, enddate, dump_csv=dump_csv)
 elif (plot_mode == SEASONAL_SOLAR):
     fwidataobj.plotSeasonal(outputfile, startdate, enddate, solar=True, dump_csv=dump_csv)
+elif (plot_mode == SEASONAL_CUSTOM):
+    fwidataobj.plotSeasonal(outputfile, startdate, enddate, custom=seasons_custom, dump_csv=dump_csv)
 else:
     print("Invalid mode {}".format(plot_mode))
     exit(7)
