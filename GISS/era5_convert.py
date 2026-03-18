@@ -2,12 +2,12 @@ import pandas as pd
 import numpy as np
 import argparse, os, subprocess
 from get_timezone_util import get_timezone
-import calendar
+import calendar, time
 from datetime import datetime
 
 parser = argparse.ArgumentParser()
 
-parser.add_argument('-i', '--input', nargs=1, required=True, help='ZIP file of ERA5 data')
+parser.add_argument('-i', '--input', nargs=1, required=True, help='zip file of ERA5 data or a txt file with an input zip file and optional output file name separated by a comma')
 parser.add_argument('-o', '--output', nargs=1, help='Output csv file, if not specified filename will be placed in working directory and named based on lat/lon')
 parser.add_argument('--from', nargs=1, help='Start year')
 parser.add_argument('--to', nargs=1, help='End year')
@@ -52,6 +52,7 @@ def tetens(temp):
 vtetens = np.vectorize(tetens)
 
 def do_conversion(inputfile, outputfile=None):
+    start_time = time.perf_counter()
     # create a temp working directory to store unzipped files
     if outputfile is None:
         outdir_temp = "./{}".format(inputfile.split('/')[-1].split('.')[0])
@@ -84,11 +85,11 @@ def do_conversion(inputfile, outputfile=None):
     if (start_year == 0 and end_year == 0):
         pass
     elif (start_year == 0):
-        df = df[(df['date'] >= df['date'].iloc[0]) & (df['date'] < datetime(end_year+1, 1, 1))]
+        df = df[(df['date'] < datetime(end_year+1, 1, 1))]
     elif (end_year == 0):
-        df = df[(df['date'] >= datetime(start_year, 1, 1)) & (df['date'] <= df['date'].iloc[-1])]
+        df = df[(df['date'] >= datetime(start_year, 1, 1))]
     else:
-        df = df[(df['date'] >= df['date'].iloc[0]) & (df['date'] <= df['date'].iloc[-1])]
+        df = df[(df['date'] >= datetime(start_year, 1, 1)) & (df['date'] < datetime(end_year+1, 1, 1))]
 
     # there are now five data columns tp, u10, v10, d2m, t2m
     # tp = total percipitation (m)
@@ -147,7 +148,26 @@ def do_conversion(inputfile, outputfile=None):
     df['rh'] = vtetens(df['d2m'] - 273.15) / vtetens(df['t2m'] - 273.15) * 100
 
     df.to_csv(outputfile, columns=['id', 'lat', 'long', 'timezone', 'yr', 'mon', 'day', 'hr', 'temp', 'rh', 'ws', 'prec'], index=False)
-    print("Written to {}".format(outputfile))
+    end_time = time.perf_counter()
+    print("Converted {} to {}, time taken {:6f}s".format(inputfile, outputfile, end_time - start_time))
     #subprocess.call(["rm", "-rf", outdir_temp])
 
-do_conversion(inputfile, outputfile=outputfile)
+# check for text file
+if (inputfile.split('.')[-1].lower() == 'zip'):
+    do_conversion(inputfile, outputfile=outputfile)
+else:
+    counter = 0
+    with open(inputfile, mode='r') as ifile:
+        for line in ifile:
+            counter += 1
+            iofiles = line.strip().split(',')
+            if len(iofiles) == 1:
+                if (iofiles[0].split('.')[-1].lower() != 'zip' or not os.path.isfile(iofiles[0])):
+                    print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, iofiles[0]))
+                else:
+                    do_conversion(iofiles[0])
+            else:
+                if (iofiles[0].split('.')[-1].lower() != 'zip' or not os.path.isfile(iofiles[0])):
+                    print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, iofiles[0]))
+                else:
+                    do_conversion(iofiles[0], outputfile=iofiles[1])
