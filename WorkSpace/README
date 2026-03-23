@@ -1,5 +1,5 @@
 GISS branch of NG-CFFDRS code.
-PLEASE ONLY USE THIS DIRECTORY (WorkSpace) TO RUN CODE
+PLEASE ONLY USE THE DIRECTORY 'WorkSpace' TO RUN CODE
 
 ############################# Running FWI #############################
 
@@ -97,7 +97,7 @@ wx_convert_filter.sh: Converts data to a format the FWI scripts can read.
 
   NOTE: no output will be given if no line exists where all variables temp, rh, ws, prec are valid values (not NaN). Internally, this script will fill in NaNs with the previous value. This script will also check for discontinuities in hourly data (where data is missing for an hour or where a duplicate entry exists).
 
-wx_batch_convert.sh: Batch converts data by calling wx_convert_filter.sh. Batch conversion will take places for files within a bounding longitude vaguely corresponding to Canada (-140 to -50). Batch conversion will ignore lines in the imput .csv list of files with a # in front.
+wx_batch_convert.sh: Batch converts data by calling wx_convert_filter.sh. Batch conversion will ignore lines in the imput .csv list of files with a # in front.
 
   Arguments:
     - CSV list of files, in the format of
@@ -123,6 +123,39 @@ wx_batch_convert.sh: Batch converts data by calling wx_convert_filter.sh. Batch 
     - Ending year of extraction
     - Output directory of converted files
 
+##############################  ERA5 Data #############################
+
+csdapi_get_era5.py: Example script for getting ERA5 weather data. Before running, the CSDAPI must be set up: https://cds.climate.copernicus.eu/how-to-api.
+
+era5_convert.py: Converts the downloaded .zip file(s) from csdapi_get_era5.py into a format the FWI scripts can read. Because the names of the resulting files are random, the .zip files are converted directly into output .csv file(s).
+
+  Arguments:
+    -i --input: Name of .zip file of ERA5 data OR a .txt file with a list of .zip files, followed optionally by the name of an output .csv file
+      
+      As of the March 2026, five variables are needed from the ERA5 dataset for conversion. These are split into three different files when unzipped. The unzipped files and variables are:
+        - reanalysis-era5-land-timeseries-sfc-windxxxxxxx.csv (u10, v10)
+        - reanalysis-era5-land-timeseries-sfc-2m-temperaturexxxxxx.csv (d2m, t2m)
+        - reanalysis-era5-land-timeseries-sfc-pressure-precipitationxxxxxxx.csv (tp)
+
+        - u10: 10m u component of wind (m/s)
+        - v10: 10m v component of wind (m/s)
+        - d2m: 2m dewpoint temperature (K)
+        - t2m: 2m temperature (K)
+        - tp: total percipitation (m)
+                
+    -o --output: Name of the output .csv file, if this is not specified, one will be generated based on the lat/lon coordinates, option is ignored when a list of input .zip are given
+    --from: Starting year to filter incoming data, inclusive
+    --to: Ending year to filter incoming data, inclusive
+
+  The outputs will be formatted in the same way as wx_convert_filter.sh, but does not filter a threshold temperature. The variables are calculated as follows:
+
+    temp = t2m - 273.15 (C)
+    rh = 100 * tetens(d2m) / tetens(t2m) (%) (using the Tetens equation for saturation vapor pressure)
+    ws = sqrt(u10**2 + v10**2) / 1000 * 3600 (km/hr)
+    prec = tp * 1000 (mm)
+
+  By default, multiprocessing is used when converting more than one file. This can be switched off by setting the variable do_multiprocess to False.
+
 ############################  Plotting Data ###########################
 
 plot_fwi.py: plots the data given from an output FWI run. Plots can be in the form of hourly FWI, maximum daily FWI, a combination of both, or a rolling average plot.
@@ -131,9 +164,10 @@ plot_fwi.py: plots the data given from an output FWI run. Plots can be in the fo
     -i --input: Name of csv file of FWI output
     -o --output: Name of output file of FWI output (PDF or PNG)
     --name: Name of the station
-    -m --mode: Changes the plot type (default, hourly, maxdaily, rolling, monthly, seasonal, seasonal_solar)
+    -m --mode: Changes the plot type (default, hourly, maxdaily, rolling, monthly, seasonal, seasonal_solar, seasonal_custom)
     -p --period: Applicable for rolling plots only, specifies the number of days to take a rolling average of FWI
     --season: Automatically finds and plots the dates of the last specified season in data range (DFJ, MAM, JJA, SON, winter, spring, summer, autumn/fall)
+    --seasons_custom: List of months to define custom seasons (for example, 5 10 would give two seasons from May to September and October to April)
     --from: Date from where the plot starts, separated by spaces YYYY MM DD
     --to: Date to where plot ends, separated by spaces YYYY MM DD
     --all: Plot the entire date range of the file, ignored if either --from or --to are specified, not applicable for rolling plots

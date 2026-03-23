@@ -4,6 +4,9 @@ import argparse, os, subprocess
 from get_timezone_util import get_timezone
 import calendar, time
 from datetime import datetime
+from multiprocessing import Pool
+
+do_multiprocess = True
 
 parser = argparse.ArgumentParser()
 
@@ -126,7 +129,7 @@ def do_conversion(inputfile, outputfile=None):
         llat = 'S'
     if (lon < 0):
         llon = 'W'
-    station_id = "{:.2f}{}{:.2f}{}".format(lat, llat, lon, llon)
+    station_id = "{:.2f}{}_{:.2f}{}".format(np.abs(lat), llat, np.abs(lon), llon)
     if outputfile is None:
         outputfile = "era5input_{}.csv".format(station_id)
 
@@ -150,24 +153,57 @@ def do_conversion(inputfile, outputfile=None):
     df.to_csv(outputfile, columns=['id', 'lat', 'long', 'timezone', 'yr', 'mon', 'day', 'hr', 'temp', 'rh', 'ws', 'prec'], index=False)
     end_time = time.perf_counter()
     print("Converted {} to {}, time taken {:6f}s".format(inputfile, outputfile, end_time - start_time))
-    #subprocess.call(["rm", "-rf", outdir_temp])
+    subprocess.call(["rm", "-rf", outdir_temp])
 
 # check for text file
-if (inputfile.split('.')[-1].lower() == 'zip'):
-    do_conversion(inputfile, outputfile=outputfile)
-else:
-    counter = 0
-    with open(inputfile, mode='r') as ifile:
-        for line in ifile:
-            counter += 1
-            iofiles = line.strip().split(',')
-            if len(iofiles) == 1:
+#if (inputfile.split('.')[-1].lower() == 'zip'):
+#    do_conversion(inputfile, outputfile=outputfile)
+#else:
+#    counter = 0
+#    with open(inputfile, mode='r') as ifile:
+#        for line in ifile:
+#            counter += 1
+#            iofiles = line.strip().split(',')
+#            if len(iofiles) == 1:
+#                if (iofiles[0].split('.')[-1].lower() != 'zip' or not os.path.isfile(iofiles[0])):
+#                    print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, iofiles[0]))
+#                else:
+#                    do_conversion(iofiles[0])
+#            else:
+#                if (iofiles[0].split('.')[-1].lower() != 'zip' or not os.path.isfile(iofiles[0])):
+#                    print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, iofiles[0]))
+#                else:
+#                    if (iofiles[1].split('.')[-1].lower() != 'csv'):
+#                        print("Line {}: Output file must be a csv file, skipping...".format(counter))
+#                    else:
+#                        do_conversion(iofiles[0], outputfile=iofiles[1])
+
+if __name__ == '__main__':
+    if (inputfile.split('.')[-1].lower() == 'zip'):
+        do_conversion(inputfile, outputfile=outputfile)
+    else:
+        counter = 0
+        conversion_args = []
+        with open(inputfile, mode='r') as ifile:
+            for line in ifile:
+                counter += 1
+                iofiles = line.strip().split(',')
                 if (iofiles[0].split('.')[-1].lower() != 'zip' or not os.path.isfile(iofiles[0])):
                     print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, iofiles[0]))
                 else:
-                    do_conversion(iofiles[0])
-            else:
-                if (iofiles[0].split('.')[-1].lower() != 'zip' or not os.path.isfile(iofiles[0])):
-                    print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, iofiles[0]))
-                else:
-                    do_conversion(iofiles[0], outputfile=iofiles[1])
+                    if len(iofiles) == 1:
+                        conversion_args.append((iofiles[0], None))
+                    else:
+                        if (iofiles[1].split('.')[-1].lower() != 'csv'):
+                            print("Line {}: Output file must be a csv file, skipping...".format(counter))
+                        else:
+                            conversion_args.append((iofiles[0], iofiles[1]))
+        if (do_multiprocess):
+            pool = Pool()
+            pool.starmap(do_conversion, conversion_args)
+            pool.close()
+            pool.join()
+        else:
+            for cargs in conversion_args:
+                do_conversion(*cargs)
+
