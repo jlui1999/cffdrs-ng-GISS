@@ -146,9 +146,9 @@ def do_conversion(inputfile, outputfile=None):
 
     # conversions
     df['temp'] = df['t2m'] - 273.15
-    df['prec'] = df['tp'] * 1000
-    df['ws'] = np.hypot(df['u10'], df['v10']) * 3.6
-    df['rh'] = vtetens(df['d2m'] - 273.15) / vtetens(df['t2m'] - 273.15) * 100
+    df['prec'] = np.maximum(df['tp'] * 1000, 0)
+    df['ws'] = np.maximum(np.hypot(df['u10'], df['v10']) * 3.6, 0)
+    df['rh'] = np.minimum(vtetens(df['d2m'] - 273.15) / vtetens(df['t2m'] - 273.15) * 100, 100)
 
     df.to_csv(outputfile, columns=['id', 'lat', 'long', 'timezone', 'yr', 'mon', 'day', 'hr', 'temp', 'rh', 'ws', 'prec'], index=False)
     end_time = time.perf_counter()
@@ -156,28 +156,6 @@ def do_conversion(inputfile, outputfile=None):
     subprocess.call(["rm", "-rf", outdir_temp])
 
 # check for text file
-#if (inputfile.split('.')[-1].lower() == 'zip'):
-#    do_conversion(inputfile, outputfile=outputfile)
-#else:
-#    counter = 0
-#    with open(inputfile, mode='r') as ifile:
-#        for line in ifile:
-#            counter += 1
-#            iofiles = line.strip().split(',')
-#            if len(iofiles) == 1:
-#                if (iofiles[0].split('.')[-1].lower() != 'zip' or not os.path.isfile(iofiles[0])):
-#                    print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, iofiles[0]))
-#                else:
-#                    do_conversion(iofiles[0])
-#            else:
-#                if (iofiles[0].split('.')[-1].lower() != 'zip' or not os.path.isfile(iofiles[0])):
-#                    print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, iofiles[0]))
-#                else:
-#                    if (iofiles[1].split('.')[-1].lower() != 'csv'):
-#                        print("Line {}: Output file must be a csv file, skipping...".format(counter))
-#                    else:
-#                        do_conversion(iofiles[0], outputfile=iofiles[1])
-
 if __name__ == '__main__':
     if (inputfile.split('.')[-1].lower() == 'zip'):
         do_conversion(inputfile, outputfile=outputfile)
@@ -187,6 +165,8 @@ if __name__ == '__main__':
         with open(inputfile, mode='r') as ifile:
             for line in ifile:
                 counter += 1
+                if (line[0] == '#'):
+                    continue
                 iofiles = line.strip().split(',')
                 if (iofiles[0].split('.')[-1].lower() != 'zip' or not os.path.isfile(iofiles[0])):
                     print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, iofiles[0]))

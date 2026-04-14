@@ -33,7 +33,7 @@ from daily_summaries import generate_daily_summaries
 
 initializeCodes = False
 if (len(sys.argv) < 3):
-    print('Usage: python Tutorial_NGFWI.py <data file> <output file> [ffmc] [dmc] [dc]')
+    print('Usage: python giss_hourly_FWI.py <data file> <output file> [ffmc] [dmc] [dc]')
     exit()
 elif (len(sys.argv) == 6):
     ffmc = float(sys.argv[3])

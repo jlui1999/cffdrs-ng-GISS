@@ -10,7 +10,7 @@ library(lubridate)
 library(data.table)
 library(lutz)
 
-Packages required for python:
+Packages required for Python:
 import pandas as pd
 from datetime import datetime
 from timezonefinder import TimezoneFinder
@@ -18,12 +18,24 @@ from pytz import timezone
 import logging
 
 To run tutorial code:
-- python:   python ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_py.csv
+- Python:   python ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_py.csv
 - R:        Rscript ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_R.csv
 
-FWI may be initialized with FFMC, DMC, and DC codes as arguments placed after the output file. By default, this is FFMC=85, DMC=6, DC=15. FWI can also be initialized from the data .csv file itself on the header line as #FFMC#DMC#DC place at the end of the header (as outputted by wx_convert_filter.sh).
+FWI may be initialized with FFMC, DMC, and DC codes as arguments placed after the output file. By default, this is FFMC=85, DMC=6, DC=15. FWI can also be initialized from the data .csv file itself on the header line as #FFMC#DMC#DC place at the end of the header (as outputted by wx_convert_filter.sh). Arguments for starting codes from the command line will override those from the input file.
 
-Note that for the outputs, R's counting starts at 1 while python's starts at 0.
+Note that for the outputs, R's counting starts at 1 while Python's starts at 0.
+
+########################### Parallelized FWI ###########################
+
+giss_hourly_FWI_parallel.py: FWI code that can be run in parallel for fast processing of large datasets.
+
+  Argument:
+    - Input TXT file, in the format of
+
+      inputfwidata1.csv,outputfwi1.csv
+      inputfwidata2.csv,outputfwi2.csv,85,6,15
+
+      Each line requires at least two arguments separated by a comma, the input weather data that the FWI scripts can read, and an output file. Optionally, three arguments FFMC, DMC, and DC codes can be placed after each line to initialize FWI. Arguments for starting codes from the list of files will override those from the listed input file.
 
 #########################  Preprocessing Data ##########################
 
@@ -127,10 +139,10 @@ wx_batch_convert.sh: Batch converts data by calling wx_convert_filter.sh. Batch 
 
 csdapi_get_era5.py: Example script for getting ERA5 weather data. Before running, the CSDAPI must be set up: https://cds.climate.copernicus.eu/how-to-api.
 
-era5_convert.py: Converts the downloaded .zip file(s) from csdapi_get_era5.py into a format the FWI scripts can read. Because the names of the resulting files are random, the .zip files are converted directly into output .csv file(s).
+era5_convert.py: Converts the downloaded .zip file(s) from csdapi_get_era5.py into a format the FWI scripts can read. Because the names of the resulting files are random, the .zip files are converted directly into output .csv file(s). Files must not be unzipped for the converter.
 
   Arguments:
-    -i --input: Name of .zip file of ERA5 data OR a .txt file with a list of .zip files, followed optionally by the name of an output .csv file
+    -i --input: Name of .zip file of ERA5 data OR a .txt file with a list of .zip files, followed optionally by a comma and the name of an output .csv file
       
       As of the March 2026, five variables are needed from the ERA5 dataset for conversion. These are split into three different files when unzipped. The unzipped files and variables are:
         - reanalysis-era5-land-timeseries-sfc-windxxxxxxx.csv (u10, v10)
