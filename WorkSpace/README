@@ -5,29 +5,29 @@ PLEASE ONLY USE THE DIRECTORY 'WorkSpace' TO RUN CODE
 
 R code: Specify the directory of the code with environment variable R_Fire
 
-Libraries required for R:
-library(lubridate)
-library(data.table)
-library(lutz)
+  Libraries required for R:
+    library(lubridate)
+    library(data.table)
+    library(lutz)
 
-Packages required for Python:
-import pandas as pd
-from datetime import datetime
-from timezonefinder import TimezoneFinder
-from pytz import timezone
-import logging
+  Packages required for Python:
+    import pandas as pd
+    from datetime import datetime
+    from timezonefinder import TimezoneFinder
+    from pytz import timezone
+    import logging
 
-To run tutorial code:
-- Python:   python ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_py.csv
-- R:        Rscript ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_R.csv
+  To run tutorial code:
+    - Python:   python ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_py.csv
+    - R:        Rscript ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_R.csv
 
-FWI may be initialized with FFMC, DMC, and DC codes as arguments placed after the output file. By default, this is FFMC=85, DMC=6, DC=15. FWI can also be initialized from the data .csv file itself on the header line as #FFMC#DMC#DC place at the end of the header (as outputted by wx_convert_filter.sh). Arguments for starting codes from the command line will override those from the input file.
+  FWI may be initialized with FFMC, DMC, and DC codes as arguments placed after the output file. By default, this is FFMC=85, DMC=6, DC=15. FWI can also be initialized from the data .csv file itself on the header line as #FFMC#DMC#DC place at the end of the header (as outputted by wx_convert_filter.sh). Arguments for starting codes from the command line will override those from the input file.
 
-Note that for the outputs, R's counting starts at 1 while Python's starts at 0.
+  Note that for the outputs, R's counting starts at 1 while Python's starts at 0.
 
 ########################### Parallelized FWI ###########################
 
-giss_hourly_FWI_parallel.py: FWI code that can be run in parallel for fast processing of large datasets.
+giss_hourly_FWI_parallel_cmd.py: FWI code that can be run in parallel for fast processing of large datasets using command line arguments.
 
   Argument:
     - Input TXT file, in the format of
@@ -35,7 +35,7 @@ giss_hourly_FWI_parallel.py: FWI code that can be run in parallel for fast proce
       inputfwidata1.csv,outputfwi1.csv
       inputfwidata2.csv,outputfwi2.csv,85,6,15
 
-      Each line requires at least two arguments separated by a comma, the input weather data that the FWI scripts can read, and an output file. Optionally, three arguments FFMC, DMC, and DC codes can be placed after each line to initialize FWI. Arguments for starting codes from the list of files will override those from the listed input file.
+      Each line requires at least two arguments separated by a comma, the input weather data that the FWI scripts can read, and an output file. Optionally, three arguments FFMC, DMC, and DC codes can be placed after each line to initialize FWI. Starting codes, if specified, will be provided to the FWI scripts in this order of preference: command line, list of files, data file.
 
 #########################  Preprocessing Data ##########################
 
@@ -137,28 +137,45 @@ wx_batch_convert.sh: Batch converts data by calling wx_convert_filter.sh. Batch 
 
 ##############################  ERA5 Data #############################
 
-csdapi_get_era5.py: Example script for getting ERA5 weather data. Before running, the CSDAPI must be set up: https://cds.climate.copernicus.eu/how-to-api.
+Before running, the CSDAPI must be set up: https://cds.climate.copernicus.eu/how-to-api.
 
-era5_convert.py: Converts the downloaded .zip file(s) from csdapi_get_era5.py into a format the FWI scripts can read. Because the names of the resulting files are random, the .zip files are converted directly into output .csv file(s). Files must not be unzipped for the converter.
+giss_config.py: Contains configuration for ERA5 data download, conversion, and FWI processing (see file for details). This file is intended to be edited.
 
-  Arguments:
-    -i --input: Name of .zip file of ERA5 data OR a .txt file with a list of .zip files, followed optionally by a comma and the name of an output .csv file
-      
-      As of the March 2026, five variables are needed from the ERA5 dataset for conversion. These are split into three different files when unzipped. The unzipped files and variables are:
-        - reanalysis-era5-land-timeseries-sfc-windxxxxxxx.csv (u10, v10)
-        - reanalysis-era5-land-timeseries-sfc-2m-temperaturexxxxxx.csv (d2m, t2m)
-        - reanalysis-era5-land-timeseries-sfc-pressure-precipitationxxxxxxx.csv (tp)
+get_landmask.py: Downloads the ERA5 landmask.
 
-        - u10: 10m u component of wind (m/s)
-        - v10: 10m v component of wind (m/s)
-        - d2m: 2m dewpoint temperature (K)
-        - t2m: 2m temperature (K)
-        - tp: total percipitation (m)
+generate_grid_of_points.py: Generates a list of points based off of the ERA5 landmask.
+
+  The resulting output file is generated in the following format:
+
+    station_id,lat,lon (no header)
+
+    43.20N_4.40W,43.20,-4.40
+    43.20N_4.20W,43.20,-4.20
+    43.20N_4.00W,43.20,-4.00
+
+  FWI starting codes may optionally be defined in the list of points that will be passed to the FWI scripts:
+
+    43.20N_4.40W,43.20,-4.40
+    43.20N_4.20W,43.20,-4.20
+    43.20N_4.00W,43.20,-4.00,85,6,15
+  
+  Each point listed will be a point where the ERA5 landmask is greater than 0 to prevent the download script from downloading empty data (i.e. over oceans), though this is still imperfect and downloaded data may still be empty. Because the ERA5 grid is 0.1x0.1 degrees in resolution it is recommended to use the stride option in the config file to prevent downloading too many points. For all points, a station id based on the lat/lon coordinates of each point is generated. For all subsquent scripts, this file is used as the list of points to process. This file can also be manually created for any set of custom-defined points. A '#' is treated as a comment (useful for generating points but only downloading a subset of them).
+
+csdapi_get_era5.py: Downloads the ERA5 data for each point in the grid.
+
+era5_convert.py: Converts the downloaded .zip file(s) from csdapi_get_era5.py into a format the FWI scripts can read. Because the names of the resulting files are random, the .zip files are converted directly into output .csv file(s). Files must *not* be unzipped for the converter.
+
+  As of the March 2026, five variables are needed from the ERA5 dataset for conversion. These are split into three different files when unzipped. The unzipped files and variables are:
+    - reanalysis-era5-land-timeseries-sfc-windxxxxxxx.csv (u10, v10)
+    - reanalysis-era5-land-timeseries-sfc-2m-temperaturexxxxxx.csv (d2m, t2m)
+    - reanalysis-era5-land-timeseries-sfc-pressure-precipitationxxxxxxx.csv (tp)
+
+    - u10: 10m u component of wind (m/s)
+    - v10: 10m v component of wind (m/s)
+    - d2m: 2m dewpoint temperature (K)
+    - t2m: 2m temperature (K)
+    - tp: total percipitation (m)
                 
-    -o --output: Name of the output .csv file, if this is not specified, one will be generated based on the lat/lon coordinates, option is ignored when a list of input .zip are given
-    --from: Starting year to filter incoming data, inclusive
-    --to: Ending year to filter incoming data, inclusive
-
   The outputs will be formatted in the same way as wx_convert_filter.sh, but does not filter a threshold temperature. The variables are calculated as follows:
 
     temp = t2m - 273.15 (C)
@@ -166,7 +183,9 @@ era5_convert.py: Converts the downloaded .zip file(s) from csdapi_get_era5.py in
     ws = sqrt(u10**2 + v10**2) / 1000 * 3600 (km/hr)
     prec = tp * 1000 (mm)
 
-  By default, multiprocessing is used when converting more than one file. This can be switched off by setting the variable do_multiprocess to False.
+  By default, multiprocessing is used when converting more than one file. This can be switched off by setting the variable in the config file do_multiprocess to False. If an empty dataset is detected, no output file will be made.
+
+giss_hourly_FWI_parallel.py: FWI code that can be run in parallel for fast processing of large datasets. Identical to giss_hourly_FWI_parallel_cmd.py except this script runs off of a grid of points. Starting codes, if specified, will be provided to the FWI scripts in this order of preference: config file, list of points, data file. 
 
 ############################  Plotting Data ###########################
 

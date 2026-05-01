@@ -1,49 +1,16 @@
 import pandas as pd
 import numpy as np
 import argparse, os, subprocess
-from get_timezone_util import get_timezone
+from giss_utils import get_timezone
 import calendar, time
 from datetime import datetime
 from multiprocessing import Pool
+from giss_config import *
 
-do_multiprocess = True
-
-parser = argparse.ArgumentParser()
-
-parser.add_argument('-i', '--input', nargs=1, required=True, help='zip file of ERA5 data or a txt file with an input zip file and optional output file name separated by a comma')
-parser.add_argument('-o', '--output', nargs=1, help='Output csv file, if not specified filename will be placed in working directory and named based on lat/lon')
-parser.add_argument('--from', nargs=1, help='Start year')
-parser.add_argument('--to', nargs=1, help='End year')
-
-args = parser.parse_args()
-
-inputfile = None
-outputfile = None
-outdir_temp = None
-start_year = 0
-end_year = 0
-
-for k,v in vars(args).items():
-    if (k == 'input'):
-        if (not os.path.isfile(v[0])):
-            print("Specified file {} does not exist, exiting...".format(v[0]))
-            exit(1)
-        elif (v[0].split('.')[-1].lower() != 'zip' and v[0].split('.')[-1].lower() != 'txt'):
-            print("Input file must be a zip or a txt file")
-            exit(2)
-        else:
-            inputfile = v[0]
-    if (k == 'output'):
-        if v is not None:
-            outputfile = v[0]
-            if (outputfile.split('.')[-1].lower() != 'csv'):
-                print("Output file must be a csv file")
-    if (k == 'from'):
-        if v is not None:
-            start_year = int(v[0])
-    if (k == 'to'):
-        if v is not None:
-            end_year = int(v[0])
+subprocess.call(["mkdir",
+                "-p",
+                "{}/{}/{}".format(projectDir, regionName, convertedFolder)
+                 ])
 
 # Teten's equation without the constant in the front
 def tetens(temp):
@@ -58,9 +25,9 @@ def do_conversion(inputfile, outputfile=None):
     start_time = time.perf_counter()
     # create a temp working directory to store unzipped files
     if outputfile is None:
-        outdir_temp = "./{}".format(inputfile.split('/')[-1].split('.')[0])
+        outdir_temp = "./{}".format(".".join(inputfile.split('/')[-1].split('.')[:-1]))
     else:
-        outdir_temp = "{}/{}".format("/".join(outputfile.split('/')[0:-1]), inputfile.split('/')[-1].split('.')[0])
+        outdir_temp = "{}/{}".format("/".join(outputfile.split('/')[0:-1]), ".".join(inputfile.split('/')[-1].split('.')[0:-1]))
 
     subprocess.call(["mkdir", "-p", outdir_temp])
     subprocess.call(["unzip", "-o", inputfile, "-d", outdir_temp])
@@ -80,6 +47,11 @@ def do_conversion(inputfile, outputfile=None):
 
     del df2
     del df3
+
+    # check if data is actually present, downloaded era5 files can have no data at all
+    if (df['t2m'].iloc[0] != df['t2m'].iloc[0]):
+        print("{} seems to have no valid data, skipping...".format(inputfile))
+        return
 
     # convert to datetime format
     df['date'] = pd.to_datetime(df['valid_time'])
@@ -119,7 +91,7 @@ def do_conversion(inputfile, outputfile=None):
     if (lon > 360 or lon < -360):
         lon %= 360
     if (lon > 180):
-        lon -= 180
+        lon -= 360
 
     # generate an id and use as output file name if one is not provided already
     llat = 'N'
@@ -150,40 +122,35 @@ def do_conversion(inputfile, outputfile=None):
     df['ws'] = np.maximum(np.hypot(df['u10'], df['v10']) * 3.6, 0)
     df['rh'] = np.minimum(vtetens(df['d2m'] - 273.15) / vtetens(df['t2m'] - 273.15) * 100, 100)
 
+
     df.to_csv(outputfile, columns=['id', 'lat', 'long', 'timezone', 'yr', 'mon', 'day', 'hr', 'temp', 'rh', 'ws', 'prec'], index=False)
     end_time = time.perf_counter()
     print("Converted {} to {}, time taken {:6f}s".format(inputfile, outputfile, end_time - start_time))
     subprocess.call(["rm", "-rf", outdir_temp])
 
-# check for text file
 if __name__ == '__main__':
-    if (inputfile.split('.')[-1].lower() == 'zip'):
-        do_conversion(inputfile, outputfile=outputfile)
+    counter = 0
+    conversion_args = []
+    inputfile = "{}/{}/{}".format(projectDir, regionName, pointLocations)
+    with open(inputfile, mode='r') as ifile:
+        for line in ifile:
+            counter += 1
+            if (line[0] == '#'):
+                continue
+            iline = line.strip().split('#')[0].split(',')
+            station_id = iline[0]
+            inzipfile = "{}/{}/{}/{}_{}.zip".format(projectDir, regionName, downloadedFolder, downloadedPrefix, station_id)
+            if (not os.path.isfile(inzipfile)):
+                print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, inzipfile))
+            else:
+                converted_file = "{}/{}/{}/{}_{}.csv".format(projectDir, regionName, convertedFolder, convertedPrefix, station_id)
+                conversion_args.append((inzipfile, converted_file))
+    if (do_multiprocess):
+        pool = Pool()
+        pool.starmap(do_conversion, conversion_args)
+        pool.close()
+        pool.join()
     else:
-        counter = 0
-        conversion_args = []
-        with open(inputfile, mode='r') as ifile:
-            for line in ifile:
-                counter += 1
-                if (line[0] == '#'):
-                    continue
-                iofiles = line.strip().split(',')
-                if (iofiles[0].split('.')[-1].lower() != 'zip' or not os.path.isfile(iofiles[0])):
-                    print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, iofiles[0]))
-                else:
-                    if len(iofiles) == 1:
-                        conversion_args.append((iofiles[0], None))
-                    else:
-                        if (iofiles[1].split('.')[-1].lower() != 'csv'):
-                            print("Line {}: Output file must be a csv file, skipping...".format(counter))
-                        else:
-                            conversion_args.append((iofiles[0], iofiles[1]))
-        if (do_multiprocess):
-            pool = Pool()
-            pool.starmap(do_conversion, conversion_args)
-            pool.close()
-            pool.join()
-        else:
-            for cargs in conversion_args:
-                do_conversion(*cargs)
+        for cargs in conversion_args:
+            do_conversion(*cargs)
 

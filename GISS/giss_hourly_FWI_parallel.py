@@ -1,89 +1,61 @@
 # multiprocessor-enabled version of giss_hourly_FWI.py
 
-import pandas as pd
 from multiprocessing import Pool
-import time
 
-import sys, os
-script_path = os.path.realpath(__file__)
-source_dir = os.path.dirname(script_path)
-sys.path.append("{}/../FWI/Python".format(source_dir))
+import os, subprocess
 
-from NG_FWI import hFWI
-from daily_summaries import generate_daily_summaries
+from giss_config import *
+from giss_utils import fwi_calc
 
-if (len(sys.argv) < 2):
-    print("Usage: python giss_hourly_FWI_multi.py <txt file>")
-    print("Text file contains, per line, separated by commas: <weather data>,<output file>,[ffmc],[dmc],[dc]")
-    exit(1)
+subprocess.call(["mkdir",
+                "-p",
+                "{}/{}/{}".format(projectDir, regionName, fwiFolder)
+                 ])
 
-inputdatafile = sys.argv[1]
-if (not os.path.isfile(inputdatafile)):
-    print("Specified file {} does not exist, exiting...".format(txtdatafile))
-    exit(2)
-
-if (inputdatafile.split('.')[-1].lower() != 'csv' and inputdatafile.split('.')[-1].lower() != 'txt'):
-    print("Input file must be a .txt or .csv file")
-    exit(3)
-
-def fwi_calc(datafile, outputfile, ffmc=None, dmc=None, dc=None):
-    start_time = time.perf_counter()
-    if (ffmc is None and dmc is None and dc is None):
-        initializeCodes = False
-    else:
-        initializeCodes = True
-    # FWI starting codes from .txt file will override starting codes read from .csv file
-    if (not initializeCodes):
-        with open(datafile, mode='r') as d:
-            header = d.readline().strip()
-            # the header may or may not have a starting FWI codes placed after the last row as a comment
-            headerarr = header.split('#')
-            if (len(headerarr) == 4):
-                ffmc = float(headerarr[1])
-                dmc = float(headerarr[2])
-                dc = float(headerarr[3])
-                initializeCodes = True
-
-    data = pd.read_csv(datafile, comment='#')
+init_from_args = False
+if (init_ffmc is not None and init_dmc is not None and init_dc is not None):
     try:
-        if (initializeCodes):
-            print("Starting FWI run {} with starting codes FFMC={}, DMC={}, DC={}".format(datafile, ffmc, dmc, dc))
-            data_fwi = hFWI(data, ffmc_old=ffmc, dmc_old=dmc, dc_old=dc, silent=True)
-        else:
-            data_fwi = hFWI(data, silent=True)
-    except Exception as e:
-        print("FWI conversion {} failed, {}".format(datafile, repr(e)))
-        return
-
-    data_fwi.to_csv(outputfile, index = False)
-    end_time = time.perf_counter()
-    print("FWI from {} calculated, outputted to {}, time taken {:6f}s".format(datafile, outputfile, end_time - start_time))
+        init_ffmc = float(init_ffmc)
+        init_dmc = float(init_dmc)
+        init_dc = float(init_dc)
+        init_from_args = True
+    except:
+        print("Listed starting codes from config file do not seem to be all numbers")
 
 if __name__ == '__main__':
     counter = 0
     fwi_args = []
-    with open(inputdatafile, mode='r') as ifile:
+    inputfile = "{}/{}/{}".format(projectDir, regionName, pointLocations)
+    with open(inputfile, mode='r') as ifile:
         for line in ifile:
             counter += 1
             if (line[0] == '#'):
                 continue
-            iofiles = line.strip().split(',')
-            if (iofiles[0].split('.')[-1].lower() != 'csv' or not os.path.isfile(iofiles[0])):
-                print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, iofiles[0]))
+            iline = line.strip().split('#')[0].split(',')
+            station_id = iline[0]
+            indata = "{}/{}/{}/{}_{}.csv".format(projectDir, regionName, convertedFolder, convertedPrefix, station_id)
+            if (not os.path.isfile(indata)):
+                print("Line {}: {} does not exist or is an invalid file, skipping...".format(counter, indata))
             else:
-                if len(iofiles) == 1:
-                    print("Line {}: No output file specified, skipping...".format(counter))
-                elif len(iofiles) == 2:
-                    fwi_args.append((iofiles[0], iofiles[1], None, None, None))
-                elif len(iofiles) == 5:
+                fwi_out = "{}/{}/{}/{}_{}.csv".format(projectDir, regionName, fwiFolder, fwiPrefix, station_id)
+                if len(iline) == 3:
+                    if (init_from_args):
+                        fwi_args.append((indata, fwi_out, init_ffmc, init_dmc, init_dc))
+                    else:
+                        fwi_args.append((indata, fwi_out, None, None, None))
+                elif len(iline) == 6:
                     try:
-                        fwi_args.append((iofiles[0], iofiles[1], float(iofiles[2]), float(iofiles[3]), float(iofiles[4])))
+                        fwi_args.append((indata, fwi_out, float(iline[2]), float(iline[3]), float(iline[4])))
                     except:
                         print("Line {}: Listed starting codes do not seem to be all numbers, skipping...".format(counter))
                 else:
                     print("Line {}: Invalid number of arguments, skipping...".format(counter))
 
-    pool = Pool()
-    pool.starmap(fwi_calc, fwi_args)
-    pool.close()
-    pool.join()
+    if (do_multiprocess):
+        pool = Pool()
+        pool.starmap(fwi_calc, fwi_args)
+        pool.close()
+        pool.join()
+    else:
+        for fargs in fwi_args:
+            fwi_calc(*fargs)
