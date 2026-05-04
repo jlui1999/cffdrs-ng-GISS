@@ -3,6 +3,8 @@ regionName = 'IberianPeninsulaGrid'
 
 do_multiprocess = True # sets if parallel processing is performed on era5_convert.py and giss_hourly_FWI_parallel.py
 
+# when running scripts, a folder named <projectDir>/<regionName>/<XYZFolder>/ will be created from the working folder
+
 ###############  get_landmask.py ###############
 # downloads land mask provided by ERA5, set the name of the file here
 # https://cds.climate.copernicus.eu/datasets/reanalysis-era5-land 'land_sea_mask'
@@ -19,7 +21,7 @@ start_lon = -9.53
 end_lat = 43.75
 end_lon = 3.04
 stride = 2 # step size of generated grid points if the generated grid has too many points, stride 2 skips every other cell on each dimension, reducing total number of points by a factor of 4
-pointLocations = 'IberianPeninsulaGridLocations.csv'
+pointLocations = 'IberianPeninsulaGridLocations.csv' # if defining a custom-made point location, scripts will search for it in <projectDir>/<regionName>/<pointLocations> from the working folder
 
 ############## csdapi_get_era5.py ##############
 # select variables and date range

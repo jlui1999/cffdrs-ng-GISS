@@ -1,145 +1,11 @@
 GISS branch of NG-CFFDRS code.
 PLEASE ONLY USE THE DIRECTORY 'WorkSpace' TO RUN CODE
 
-############################# Running FWI #############################
-
-R code: Specify the directory of the code with environment variable R_Fire
-
-  Libraries required for R:
-    library(lubridate)
-    library(data.table)
-    library(lutz)
-
-  Packages required for Python:
-    import pandas as pd
-    from datetime import datetime
-    from timezonefinder import TimezoneFinder
-    from pytz import timezone
-    import logging
-
-  To run tutorial code:
-    - Python:   python ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_py.csv
-    - R:        Rscript ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_R.csv
-
-  FWI may be initialized with FFMC, DMC, and DC codes as arguments placed after the output file. By default, this is FFMC=85, DMC=6, DC=15. FWI can also be initialized from the data .csv file itself on the header line as #FFMC#DMC#DC place at the end of the header (as outputted by wx_convert_filter.sh). Arguments for starting codes from the command line will override those from the input file.
-
-  Note that for the outputs, R's counting starts at 1 while Python's starts at 0.
-
-########################### Parallelized FWI ###########################
-
-giss_hourly_FWI_parallel_cmd.py: FWI code that can be run in parallel for fast processing of large datasets using command line arguments.
-
-  Argument:
-    - Input TXT file, in the format of
-
-      inputfwidata1.csv,outputfwi1.csv
-      inputfwidata2.csv,outputfwi2.csv,85,6,15
-
-      Each line requires at least two arguments separated by a comma, the input weather data that the FWI scripts can read, and an output file. Optionally, three arguments FFMC, DMC, and DC codes can be placed after each line to initialize FWI. Starting codes, if specified, will be provided to the FWI scripts in this order of preference: command line, list of files, data file.
-
-#########################  Preprocessing Data ##########################
-
-wx_convert_filter.sh: Converts data to a format the FWI scripts can read.
-
-  Arguments:
-    - Input CSV file, in the format of
-
-      YYYY,MM,DD,HH,TEMP_C,RH_PERC,VPD_HPA,WDSPD_KPH,PREC_MM,SNOWD_M,VIS_KM,FFMC,DMC,DC,BUI,ISI,FWI,OBSMINUTEDIFF_TEMP,OBSMINUTEDIFF_RH,OBSMINUTEDIFF_WDSPD,ISPRECREPORTED,OBSMINUTEDIFF_SNOW,OBSMINUTEDIFF_VIS
-      1989,12,31,19,18.3,36.0860416675646,13.454787547469,37.08,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,0,0,0,1,0,0
-      1989,12,31,20,16.5333333349787,42.0976523010093,11.7011221697317,30.9000000057556,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,300.000000055879,300.000000055879,300.000000055879,1,300.000000055879,300.000000055879
-      1989,12,31,21,14.7666666650213,48.1092629512503,9.94745678709469,24.7199999942444,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,239.999999944121,239.999999944121,239.999999944121,1,239.999999944121,239.999999944121
-      1989,12,31,22,13,54.120873584695,8.19379140935738,18.54,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,180,180,180,1,180,180
-      1989,12,31,23,11.2333333349787,60.1324842181397,6.44012603162007,12.3600000057556,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,239.999999944121,239.999999944121,239.999999944121,1,239.999999944121,239.999999944121
-
-      YYYY: year, local time
-      MM: month, local time
-      DD: day, local time
-      HH: hour, local time
-      TEMP_C: temperature in degrees celsius
-      RH_PERC: relative humidity in percent
-      VPD_HPA: vapor pressure deficit in hPa. This isn't an FWI input, but is interesting.
-      WDSPD_KPH: windspeed in km per hour
-      PREC_MM: hourly total precipitation in mm
-      SNOWDEPTH_M: snow depth in meters
-      VIS_KM: visibility in km. This isn't an FWI input, but is interesting.
-      FFMC: Fine Fuel Moisture Code
-      DMC: Duff Moisture Code
-      DC: Drought Code
-      BUI: Buildup Index
-      ISI: Initial Spread Index
-      FWI: Fire Weather Index
-      DSR: Daily Severity Rating
-      OBSMINUTEDIFF_TEMP: maximum of time difference in minutes between local 12:00pm and the closest real temperature observations before and after the local hour
-      OBSMINUTEDIFF_RH: maximum of time difference in minutes between local 12:00pm and the closest real relative humidity observations before and after the local hour, meaning temperature and dew point
-      OBSMINUTEDIFF_WDSPD: maximum of time difference in minutes between local 12:00pm and the closest real wind speed observations before and after the local hour
-      ISPRECREPORTED: 1 if there was a precipitation report spanning that hour, 0 otherwise
-      OBSMINUTEDIFF_SNOW: maximum of time difference in minutes between local 12:00pm and the closest real snow depth observations before and after the local hour
-      OBSMINUTEDIFF_VIS: maximum of time difference in minutes between local 12:00pm and the closest real visibility observations before and after the local hour
-
-    - Starting year of extraction
-    - Ending year of extraction
-    - ID/name of the weather station
-    - Latitude of the weather station
-    - Longitude of the weather station
-    - Output file name
-
-      Outputs will be given in the format of
-
-      id,lat,long,timezone,yr,mon,day,hr,temp,rh,ws,prec
-      718870-99999,50.702,-120.444,-8,2024,1,29,0,6.2,87.6321162616729,14.76,0.7
-      718870-99999,50.702,-120.444,-8,2024,1,29,1,5,93.2480954480589,18.36,0.7
-      718870-99999,50.702,-120.444,-8,2024,1,29,2,5,86.902676258922,14.76,0.7
-      718870-99999,50.702,-120.444,-8,2024,1,29,3,4.8,91.2893265574923,20.52,0.7
-      718870-99999,50.702,-120.444,-8,2024,1,29,4,5,86.902676258922,22.32,0.7
-
-      id  Weather station identifier, a unique number for the station, text or number
-      lat Latitude of weather station, decimal degrees (°) (double precision)
-      long  Longitude of weather station, decimal degrees (°) (double precision)
-      timezone UTC timezone of weather station, number
-      yr  Year of weather station reading, number YYYY
-      mon Month of weather station reading, number M or MM (must be consistent throughout the dataset)
-      day Day of weather station reading, number DD or D (must be consistent throughout the dataset)
-      hr  Hour of weather station reading, number in military time (0-23)
-      temp  Temperature in degrees Celsius (°C), number
-      rh  Relative humidity in percent (%), number (0-100)
-      ws  Wind speed in kilometres per hour (km/hr), number
-      prec  Precipitation (rain) measured in millimetres (mm), number
-
-  The script will fetch from the data file the first and last lines above a threshold temperature (5 degrees C), and everything in between. This script also has an internal toggle 'init_fwi_values' to get the starting FWI codes. With 'init_fwi_values' set to true, the first line the script will fetch is the first line above the threshold temperature and has all FWI codes: FFMC, DMC, DC.
-
-  NOTE: no output will be given if no line exists where all variables temp, rh, ws, prec are valid values (not NaN). Internally, this script will fill in NaNs with the previous value. This script will also check for discontinuities in hourly data (where data is missing for an hour or where a duplicate entry exists).
-
-wx_batch_convert.sh: Batch converts data by calling wx_convert_filter.sh. Batch conversion will ignore lines in the imput .csv list of files with a # in front.
-
-  Arguments:
-    - CSV list of files, in the format of
-
-      WMOID,WMONAME,LAT,LON,HRLYMEANTIMEDIFFTOOBS_TEMP,HRLYMEANTIMEDIFFTOOBS_RH,HRLYMEANTIMEDIFFTOOBS_WDSPD,HRLYMEANPRECREPORTINGHRS,ISD_GHCN_PRECDIFFPERCENT,HRLYMEANTIMEDIFFTOOBS__VIS
-      725920-24257,REDDING MUNICIPAL AIRPORT,40.52,-122.30,32,32,32,1,Inf,31
-      723656-23049,SANTA FE MUNICIPAL AIRPORT,35.61,-106.10,84,84,80,1,Inf,80
-      725025-94741,TETERBORO AIRPORT,40.86,-74.06,53,53,47,1,Inf,46
-      702610-26411,FAIRBANKS INTERNATIONAL,64.80,-147.88,102,102,35,1,-8,36
-      718890-99999,PENTICTON,49.46,-119.60,5,5,6,1,0,5
-
-      NOTE: only the first four entries are read in, so the following file will also work
-
-      WMOID,WMONAME,LAT,LON,ELEV,GHCNStnList
-      166270-99999,DIMOKRITOS,40.856,25.956,7.3,NaN
-      166990-99999,TANAGRA,38.34,23.565,147.8,NaN
-      167150-99999,TATOI,38.109,23.784,239.3,NaN
-      167180-99999,ELEFSIS,38.064,23.556,43.6,NaN
-      167490-99999,DIAGORAS,36.405,28.086,5.8,NaN
-
-    - Input directory of where the weather station data is stored
-    - Starting year of extraction
-    - Ending year of extraction
-    - Output directory of converted files
-
-##############################  ERA5 Data #############################
+########################## FWI From ERA5 Data #########################
 
 Before running, the CSDAPI must be set up: https://cds.climate.copernicus.eu/how-to-api.
 
-giss_config.py: Contains configuration for ERA5 data download, conversion, and FWI processing (see file for details). This file is intended to be edited.
+giss_config.py: Contains configuration for ERA5 data download, conversion, and FWI processing (see file for details). No other file except this file in the GISS/ folder are intended to be edited. All subsequent files will be read in parameters from this file when running.
 
 get_landmask.py: Downloads the ERA5 landmask.
 
@@ -159,9 +25,9 @@ generate_grid_of_points.py: Generates a list of points based off of the ERA5 lan
     43.20N_4.20W,43.20,-4.20
     43.20N_4.00W,43.20,-4.00,85,6,15
   
-  Each point listed will be a point where the ERA5 landmask is greater than 0 to prevent the download script from downloading empty data (i.e. over oceans), though this is still imperfect and downloaded data may still be empty. Because the ERA5 grid is 0.1x0.1 degrees in resolution it is recommended to use the stride option in the config file to prevent downloading too many points. For all points, a station id based on the lat/lon coordinates of each point is generated. For all subsquent scripts, this file is used as the list of points to process. This file can also be manually created for any set of custom-defined points. A '#' is treated as a comment (useful for generating points but only downloading a subset of them).
+  Each point listed will be a point where the ERA5 landmask is greater than 0 to prevent the download script from downloading empty data (i.e. over oceans), though this is still imperfect and downloaded data may still be empty. Because the ERA5 grid is 0.1x0.1 degrees in resolution it is recommended to use the stride option in the config file to prevent downloading too many points. For all points, a station id based on the lat/lon coordinates of each point is generated. For all subsquent scripts, this file is used as the list of points to process. This file can also be manually created for any set of custom-defined points, and each script will look for it at <projectDir>/<regionName>/<pointLocations>. A '#' is treated as a comment (useful for generating points but only downloading a subset of them).
 
-csdapi_get_era5.py: Downloads the ERA5 data for each point in the grid.
+csdapi_get_era5.py: Downloads the ERA5 data for each point in the grid. This downloading is rather slow (~1 minute per download), so it is best to leave it working overnight in a bash screen.
 
 era5_convert.py: Converts the downloaded .zip file(s) from csdapi_get_era5.py into a format the FWI scripts can read. Because the names of the resulting files are random, the .zip files are converted directly into output .csv file(s). Files must *not* be unzipped for the converter.
 
@@ -176,7 +42,29 @@ era5_convert.py: Converts the downloaded .zip file(s) from csdapi_get_era5.py in
     - t2m: 2m temperature (K)
     - tp: total percipitation (m)
                 
-  The outputs will be formatted in the same way as wx_convert_filter.sh, but does not filter a threshold temperature. The variables are calculated as follows:
+  The outputs are given in a format the CFFDRS FWI scripts can read:
+
+    id,lat,long,timezone,yr,mon,day,hr,temp,rh,ws,prec
+    718870-99999,50.702,-120.444,-8,2024,1,29,0,6.2,87.6321162616729,14.76,0.7
+    718870-99999,50.702,-120.444,-8,2024,1,29,1,5,93.2480954480589,18.36,0.7
+    718870-99999,50.702,-120.444,-8,2024,1,29,2,5,86.902676258922,14.76,0.7
+    718870-99999,50.702,-120.444,-8,2024,1,29,3,4.8,91.2893265574923,20.52,0.7
+    718870-99999,50.702,-120.444,-8,2024,1,29,4,5,86.902676258922,22.32,0.7
+
+    id  Weather station identifier, a unique number for the station, text or number
+    lat Latitude of weather station, decimal degrees (°) (double precision)
+    long  Longitude of weather station, decimal degrees (°) (double precision)
+    timezone UTC timezone of weather station, number
+    yr  Year of weather station reading, number YYYY
+    mon Month of weather station reading, number M or MM (must be consistent throughout the dataset)
+    day Day of weather station reading, number DD or D (must be consistent throughout the dataset)
+    hr  Hour of weather station reading, number in military time (0-23)
+    temp  Temperature in degrees Celsius (°C), number
+    rh  Relative humidity in percent (%), number (0-100)
+    ws  Wind speed in kilometres per hour (km/hr), number
+    prec  Precipitation (rain) measured in millimetres (mm), number
+
+  The conversion does not filter for a threshold temperature. From the ERA5 data, the variables necessary for running CFFDRS FWI are calculated as follows:
 
     temp = t2m - 273.15 (C)
     rh = 100 * tetens(d2m) / tetens(t2m) (%) (using the Tetens equation for saturation vapor pressure)
@@ -185,7 +73,7 @@ era5_convert.py: Converts the downloaded .zip file(s) from csdapi_get_era5.py in
 
   By default, multiprocessing is used when converting more than one file. This can be switched off by setting the variable in the config file do_multiprocess to False. If an empty dataset is detected, no output file will be made.
 
-giss_hourly_FWI_parallel.py: FWI code that can be run in parallel for fast processing of large datasets. Identical to giss_hourly_FWI_parallel_cmd.py except this script runs off of a grid of points. Starting codes, if specified, will be provided to the FWI scripts in this order of preference: config file, list of points, data file. 
+giss_hourly_FWI_parallel.py: FWI code that can be run in parallel for fast processing of large datasets. Starting codes, if specified, will be provided to the FWI scripts in this order of preference: config file, list of points, data file. 
 
 ############################  Plotting Data ###########################
 
@@ -230,3 +118,119 @@ plot_fwi.py: plots the data given from an output FWI run. Plots can be in the fo
     python plot_fwi.py -i input.csv -o output.png --name "NAME" --mode seasonal --from 2020 1 1 --to 2020 12 31
       Seasonal: plots the seasonal 5th, 25th, 50th, 75th, and 95th percentiles of FWI for the period December 1, 2019 to February 28, 2021.
     
+######################## Running FWI Standalone ########################
+
+The FWI code from Canadian Forest Fire Danger Rating System can be ran standalone with formatted a input file.
+
+R code: Specify the directory of the code with environment variable R_Fire (in .bashrc)
+
+  Libraries required for R:
+    library(lubridate)
+    library(data.table)
+    library(lutz)
+
+  Packages required for Python:
+    import pandas as pd
+    from datetime import datetime
+    from timezonefinder import TimezoneFinder
+    from pytz import timezone
+    import logging
+
+  To run tutorial code:
+    - Python:   python ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_py.csv
+    - R:        Rscript ../GISS/giss_hourly_FWI.py ../data/wx_prf.csv PRF_R.csv
+
+  FWI may be initialized with FFMC, DMC, and DC codes as arguments placed after the output file. By default, this is FFMC=85, DMC=6, DC=15. FWI can also be initialized from the data .csv file itself on the header line as #FFMC#DMC#DC place at the end of the header (as outputted by wx_convert_filter.sh). Arguments for starting codes from the command line will override those from the input file.
+
+  Note that for the outputs, R's counting starts at 1 while Python's starts at 0.
+
+################ Running FWI Standalone in Parallelized ################
+
+giss_hourly_FWI_parallel_cmd.py: FWI code that can be run in parallel for fast processing of large datasets using command line arguments. Identical to giss_hourly_FWI_parallel.py except this script runs off of a list of input and output files.
+
+  Argument:
+    - Input TXT file, in the format of
+
+      inputfwidata1.csv,outputfwi1.csv
+      inputfwidata2.csv,outputfwi2.csv,85,6,15
+
+      Each line requires at least two arguments separated by a comma, the input weather data that the FWI scripts can read, and an output file. Optionally, three arguments FFMC, DMC, and DC codes can be placed after each line to initialize FWI. Starting codes, if specified, will be provided to the FWI scripts in this order of preference: command line, list of files, data file.
+
+#################  Preprocessing Weather Station Data ##################
+
+wx_convert_filter.sh: Converts weather station data to a format the FWI scripts can read.
+
+  Arguments:
+    - Input CSV file, in the format of
+
+      YYYY,MM,DD,HH,TEMP_C,RH_PERC,VPD_HPA,WDSPD_KPH,PREC_MM,SNOWD_M,VIS_KM,FFMC,DMC,DC,BUI,ISI,FWI,OBSMINUTEDIFF_TEMP,OBSMINUTEDIFF_RH,OBSMINUTEDIFF_WDSPD,ISPRECREPORTED,OBSMINUTEDIFF_SNOW,OBSMINUTEDIFF_VIS
+      1989,12,31,19,18.3,36.0860416675646,13.454787547469,37.08,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,0,0,0,1,0,0
+      1989,12,31,20,16.5333333349787,42.0976523010093,11.7011221697317,30.9000000057556,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,300.000000055879,300.000000055879,300.000000055879,1,300.000000055879,300.000000055879
+      1989,12,31,21,14.7666666650213,48.1092629512503,9.94745678709469,24.7199999942444,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,239.999999944121,239.999999944121,239.999999944121,1,239.999999944121,239.999999944121
+      1989,12,31,22,13,54.120873584695,8.19379140935738,18.54,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,180,180,180,1,180,180
+      1989,12,31,23,11.2333333349787,60.1324842181397,6.44012603162007,12.3600000057556,0,0,20,NaN,NaN,NaN,NaN,NaN,NaN,239.999999944121,239.999999944121,239.999999944121,1,239.999999944121,239.999999944121
+
+      YYYY: year, local time
+      MM: month, local time
+      DD: day, local time
+      HH: hour, local time
+      TEMP_C: temperature in degrees celsius
+      RH_PERC: relative humidity in percent
+      VPD_HPA: vapor pressure deficit in hPa. This isn't an FWI input, but is interesting.
+      WDSPD_KPH: windspeed in km per hour
+      PREC_MM: hourly total precipitation in mm
+      SNOWDEPTH_M: snow depth in meters
+      VIS_KM: visibility in km. This isn't an FWI input, but is interesting.
+      FFMC: Fine Fuel Moisture Code
+      DMC: Duff Moisture Code
+      DC: Drought Code
+      BUI: Buildup Index
+      ISI: Initial Spread Index
+      FWI: Fire Weather Index
+      DSR: Daily Severity Rating
+      OBSMINUTEDIFF_TEMP: maximum of time difference in minutes between local 12:00pm and the closest real temperature observations before and after the local hour
+      OBSMINUTEDIFF_RH: maximum of time difference in minutes between local 12:00pm and the closest real relative humidity observations before and after the local hour, meaning temperature and dew point
+      OBSMINUTEDIFF_WDSPD: maximum of time difference in minutes between local 12:00pm and the closest real wind speed observations before and after the local hour
+      ISPRECREPORTED: 1 if there was a precipitation report spanning that hour, 0 otherwise
+      OBSMINUTEDIFF_SNOW: maximum of time difference in minutes between local 12:00pm and the closest real snow depth observations before and after the local hour
+      OBSMINUTEDIFF_VIS: maximum of time difference in minutes between local 12:00pm and the closest real visibility observations before and after the local hour
+
+    - Starting year of extraction
+    - Ending year of extraction
+    - ID/name of the weather station
+    - Latitude of the weather station
+    - Longitude of the weather station
+    - Output file name
+
+      Outputs will be given in the format the CFFDRS FWI scripts can read (see the FWI From ERA5 Data section).
+
+  The script will fetch from the data file the first and last lines above a threshold temperature (5 degrees C), and everything in between. This script also has an internal toggle 'init_fwi_values' to get the starting FWI codes. With 'init_fwi_values' set to true, the first line the script will fetch is the first line above the threshold temperature and has all FWI codes: FFMC, DMC, DC.
+
+  NOTE: no output will be given if no line exists where all variables temp, rh, ws, prec are valid values (not NaN). Internally, this script will fill in NaNs with the previous value. This script will also check for discontinuities in hourly data (where data is missing for an hour or where a duplicate entry exists).
+
+wx_batch_convert.sh: Batch converts data by calling wx_convert_filter.sh. Batch conversion will ignore lines in the imput .csv list of files with a # in front.
+
+  Arguments:
+    - CSV list of files, in the format of
+
+      WMOID,WMONAME,LAT,LON,HRLYMEANTIMEDIFFTOOBS_TEMP,HRLYMEANTIMEDIFFTOOBS_RH,HRLYMEANTIMEDIFFTOOBS_WDSPD,HRLYMEANPRECREPORTINGHRS,ISD_GHCN_PRECDIFFPERCENT,HRLYMEANTIMEDIFFTOOBS__VIS
+      725920-24257,REDDING MUNICIPAL AIRPORT,40.52,-122.30,32,32,32,1,Inf,31
+      723656-23049,SANTA FE MUNICIPAL AIRPORT,35.61,-106.10,84,84,80,1,Inf,80
+      725025-94741,TETERBORO AIRPORT,40.86,-74.06,53,53,47,1,Inf,46
+      702610-26411,FAIRBANKS INTERNATIONAL,64.80,-147.88,102,102,35,1,-8,36
+      718890-99999,PENTICTON,49.46,-119.60,5,5,6,1,0,5
+
+      NOTE: only the first four entries are read in, so the following file will also work
+
+      WMOID,WMONAME,LAT,LON,ELEV,GHCNStnList
+      166270-99999,DIMOKRITOS,40.856,25.956,7.3,NaN
+      166990-99999,TANAGRA,38.34,23.565,147.8,NaN
+      167150-99999,TATOI,38.109,23.784,239.3,NaN
+      167180-99999,ELEFSIS,38.064,23.556,43.6,NaN
+      167490-99999,DIAGORAS,36.405,28.086,5.8,NaN
+
+    - Input directory of where the weather station data is stored
+    - Starting year of extraction
+    - Ending year of extraction
+    - Output directory of converted files
+
